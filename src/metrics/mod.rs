@@ -307,7 +307,7 @@ fn collect_all_measurements(level: &MetricLevel) -> Vec<(String, MetricData)> {
 
             for (name, metric_data) in collected_metrics {
                 let joined_metrics = join_metrics(metric_data);
-  
+
                 final_metric_data.push((name, joined_metrics));
             }
 
@@ -334,6 +334,10 @@ fn join_metrics(mut metrics: Vec<MetricData>) -> MetricData {
     first
 }
 
+fn metric_at_index<'a>(metrics: &&'a Metrics, index: usize) -> Option<&'a Metric> {
+    metrics.metrics[index].as_ref()
+}
+
 #[inline]
 pub fn metric_local_duration_start() -> Instant {
     Instant::now()
@@ -345,80 +349,100 @@ pub fn metric_local_duration_end(metric: usize, start: Instant) {
 }
 
 #[inline]
-pub fn metric_duration_start(metric: usize) {
+pub fn metric_duration_start(m_index: usize) {
     match unsafe { METRICS.get() } {
         Some(ref metrics) => {
-            let metric = metrics.metrics[metric].as_ref().unwrap();
+            let metric = metric_at_index(metrics, m_index);
 
-            if metric.metric_level < metrics.current_level {
-                return;
+            if let Some(metric) = metric {
+                if metric.metric_level < metrics.current_level {
+                    return;
+                }
+
+                start_duration_measurement(metric)
+            } else {
+                error!("Failed to get metric by index {}. It is probably not registered", m_index);
             }
-
-            start_duration_measurement(metric)
         }
         None => {}
     }
 }
 
 #[inline]
-pub fn metric_duration_end(metric: usize) {
+pub fn metric_duration_end(m_index: usize) {
     match unsafe { METRICS.get() } {
         Some(ref metrics) => {
-            let metric = metrics.metrics[metric].as_ref().unwrap();
+            let metric = metric_at_index(metrics, m_index);
 
-            if metric.metric_level < metrics.current_level {
-                return;
+            if let Some(metric) = metric {
+                if metric.metric_level < metrics.current_level {
+                    return;
+                }
+
+                end_duration_measurement(metric)
+            } else {
+                error!("Failed to get metric by index {}. It is probably not registered", m_index);
             }
-
-            end_duration_measurement(metric)
         }
         None => {}
     }
 }
 
 #[inline]
-pub fn metric_duration(metric: usize, duration: Duration) {
+pub fn metric_duration(m_index: usize, duration: Duration) {
     match unsafe { METRICS.get() } {
         Some(ref metrics) => {
-            let metric = metrics.metrics[metric].as_ref().unwrap();
+            let metric = metric_at_index(metrics, m_index);
 
-            if metric.metric_level < metrics.current_level {
-                return;
+            if let Some(metric) = metric {
+                if metric.metric_level < metrics.current_level {
+                    return;
+                }
+
+                enqueue_duration_measurement(&metric, duration.as_nanos() as u64);
+            } else {
+                error!("Failed to get metric by index {}. It is probably not registered", m_index);
             }
-
-            enqueue_duration_measurement(&metric, duration.as_nanos() as u64);
         }
         None => {}
     }
 }
 
 #[inline]
-pub fn metric_increment(metric: usize, counter: Option<u64>) {
+pub fn metric_increment(m_index: usize, counter: Option<u64>) {
     match unsafe { METRICS.get() } {
         Some(ref metrics) => {
-            let metric = metrics.metrics[metric].as_ref().unwrap();
+            let metric = metric_at_index(metrics, m_index);
 
-            if metric.metric_level < metrics.current_level {
-                return;
+            if let Some(metric) = metric {
+                if metric.metric_level < metrics.current_level {
+                    return;
+                }
+
+                increment_counter_measurement(&metric, counter);
+            } else {
+                error!("Failed to get metric by index {}. It is probably not registered", m_index);
             }
-
-            increment_counter_measurement(&metric, counter);
         }
         None => {}
     }
 }
 
 #[inline]
-pub fn metric_store_count(metric: usize, amount: usize) {
+pub fn metric_store_count(m_index: usize, amount: usize) {
     match unsafe { METRICS.get() } {
         Some(ref metrics) => {
-            let metric = metrics.metrics[metric].as_ref().unwrap();
+            let metric = metric_at_index(metrics, m_index);
 
-            if metric.metric_level < metrics.current_level {
-                return;
+            if let Some(metric) = metric {
+                if metric.metric_level < metrics.current_level {
+                    return;
+                }
+
+                enqueue_counter_measurement(metric, amount);
+            } else {
+                error!("Failed to get metric by index {}. It is probably not registered", m_index);
             }
-
-            enqueue_counter_measurement(metric, amount);
         }
         None => {}
     }
