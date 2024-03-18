@@ -1,8 +1,8 @@
+use atlas_common::node_id::NodeId;
+use chrono::{DateTime, Utc};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::time::Instant;
-use chrono::{DateTime, Utc};
-use atlas_common::node_id::NodeId;
 
 pub struct CommStats {
     client_comm: Option<CommStatsHelper>,
@@ -15,38 +15,32 @@ pub struct CommStats {
 macro_rules! start_measurement {
     ($g:pat) => {
         let $g = Instant::now();
-    }
+    };
 }
 
 #[macro_export]
 macro_rules! received_network_rq {
-    ($w:expr) => {
-        {
-            let start_time = Instant::now();
+    ($w:expr) => {{
+        let start_time = Instant::now();
 
-            if let Some(comm_stats) = $w {
-                Some((comm_stats.clone(), start_time))
-            } else {
-                None
-            }
+        if let Some(comm_stats) = $w {
+            Some((comm_stats.clone(), start_time))
+        } else {
+            None
         }
-    }
+    }};
 }
 
 #[macro_export]
 macro_rules! message_digest_time {
     ($g:expr, $q:expr) => {
-
         if let Some((comm_stats, _)) = $g {
-            let time_taken_signing = Instant::now()
-                .duration_since($q)
-                .as_nanos();
+            let time_taken_signing = Instant::now().duration_since($q).as_nanos();
 
             //Broadcasts are always for replicas, so make this
             comm_stats.insert_message_signing_time(NodeId::from(0u32), time_taken_signing);
         }
-
-    }
+    };
 }
 
 #[macro_export]
@@ -61,7 +55,7 @@ macro_rules! message_sent_own {
             comm_stats.insert_message_sending_time_own(dur_send);
             comm_stats.register_rq_sent($r);
         }
-    }
+    };
 }
 
 #[macro_export]
@@ -72,7 +66,7 @@ macro_rules! message_dispatched {
 
             comm_stats.insert_message_passing_latency($w, dur_since);
         }
-    }
+    };
 }
 
 #[macro_export]
@@ -87,7 +81,7 @@ macro_rules! message_peer_sending_thread_sent {
             comm_stats.insert_message_sending_time($w.header.to(), time_taken_sending);
             comm_stats.register_rq_sent($w.header.to());
         }
-    }
+    };
 }
 
 struct CommStatsHelper {
@@ -114,12 +108,23 @@ struct CommStatsHelper {
     pub message_passing_to_send_thread: Vec<Mutex<BenchmarkHelper>>,
 }
 
-
 impl CommStats {
     pub fn new(owner_id: NodeId, first_cli: NodeId, measurement_interval: usize) -> Self {
         Self {
-            client_comm: if owner_id < first_cli { Some(CommStatsHelper::new(owner_id, String::from("Clients"), measurement_interval)) } else { None },
-            replica_comm: CommStatsHelper::new(owner_id, String::from("Replicas"), measurement_interval),
+            client_comm: if owner_id < first_cli {
+                Some(CommStatsHelper::new(
+                    owner_id,
+                    String::from("Clients"),
+                    measurement_interval,
+                ))
+            } else {
+                None
+            },
+            replica_comm: CommStatsHelper::new(
+                owner_id,
+                String::from("Replicas"),
+                measurement_interval,
+            ),
             first_cli,
             node_id: owner_id,
         }
@@ -154,7 +159,6 @@ impl CommStats {
             self.replica_comm.insert_message_passing_time_own(time)
         }
     }
-
 
     pub fn insert_message_passing_latency(&self, dest: NodeId, time: u128) {
         if dest > self.first_cli {
@@ -192,7 +196,8 @@ impl CommStats {
                 client_comm.insert_message_passing_to_send_thread(time);
             }
         } else {
-            self.replica_comm.insert_message_passing_to_send_thread(time)
+            self.replica_comm
+                .insert_message_passing_to_send_thread(time)
         }
     }
 
@@ -231,33 +236,61 @@ impl CommStatsHelper {
             info,
             measurement_interval,
             message_passing_time_taken: std::iter::repeat_with(|| {
-                Mutex::new(BenchmarkHelper::new(owner_id, measurement_interval / concurrency_level))
-            }
-            ).take(concurrency_level).collect(),
+                Mutex::new(BenchmarkHelper::new(
+                    owner_id,
+                    measurement_interval / concurrency_level,
+                ))
+            })
+            .take(concurrency_level)
+            .collect(),
             message_passing_time_taken_own: std::iter::repeat_with(|| {
-                Mutex::new(BenchmarkHelper::new(owner_id, measurement_interval / concurrency_level))
-            }
-            ).take(concurrency_level).collect(),
+                Mutex::new(BenchmarkHelper::new(
+                    owner_id,
+                    measurement_interval / concurrency_level,
+                ))
+            })
+            .take(concurrency_level)
+            .collect(),
             message_sending_time_taken: std::iter::repeat_with(|| {
-                Mutex::new(BenchmarkHelper::new(owner_id, measurement_interval / concurrency_level))
-            }
-            ).take(concurrency_level).collect(),
+                Mutex::new(BenchmarkHelper::new(
+                    owner_id,
+                    measurement_interval / concurrency_level,
+                ))
+            })
+            .take(concurrency_level)
+            .collect(),
             message_sending_time_taken_own: std::iter::repeat_with(|| {
-                Mutex::new(BenchmarkHelper::new(owner_id, measurement_interval / concurrency_level))
-            }
-            ).take(concurrency_level).collect(),
+                Mutex::new(BenchmarkHelper::new(
+                    owner_id,
+                    measurement_interval / concurrency_level,
+                ))
+            })
+            .take(concurrency_level)
+            .collect(),
             message_signing_time_taken: std::iter::repeat_with(|| {
-                Mutex::new(BenchmarkHelper::new(owner_id, measurement_interval / concurrency_level))
-            }
-            ).take(concurrency_level).collect(),
+                Mutex::new(BenchmarkHelper::new(
+                    owner_id,
+                    measurement_interval / concurrency_level,
+                ))
+            })
+            .take(concurrency_level)
+            .collect(),
             message_send_to_create: std::iter::repeat_with(|| {
-                Mutex::new(BenchmarkHelper::new(owner_id, measurement_interval / concurrency_level))
-            }
-            ).take(concurrency_level).collect(),
+                Mutex::new(BenchmarkHelper::new(
+                    owner_id,
+                    measurement_interval / concurrency_level,
+                ))
+            })
+            .take(concurrency_level)
+            .collect(),
             message_passing_to_send_thread: std::iter::repeat_with(|| {
-                Mutex::new(BenchmarkHelper::new(owner_id, measurement_interval / concurrency_level))
-            }
-            ).take(concurrency_level).collect(),
+                Mutex::new(BenchmarkHelper::new(
+                    owner_id,
+                    measurement_interval / concurrency_level,
+                ))
+            })
+            .take(concurrency_level)
+            .collect(),
         }
     }
 
@@ -326,7 +359,10 @@ impl CommStatsHelper {
 
             let instant_replica = current_instant.clone();
 
-            std::mem::replace(&mut *guard, (instant_replica, requests, current_rcved_requests))
+            std::mem::replace(
+                &mut *guard,
+                (instant_replica, requests, current_rcved_requests),
+            )
         };
 
         let duration = current_instant.duration_since(previous_instant).as_micros();
@@ -339,25 +375,51 @@ impl CommStatsHelper {
 
         self.gather_all_rqs();
 
-        println!("{:?} // {} // --- Measurements after {}  ({} samples) ---",
-                 self.node_id, self.info, requests, self.measurement_interval);
-
+        println!(
+            "{:?} // {} // --- Measurements after {}  ({} samples) ---",
+            self.node_id, self.info, requests, self.measurement_interval
+        );
 
         let time = Utc::now().timestamp_millis();
 
-        println!("{:?} // {:?} // {} requests {} per second", self.node_id, time,
-                 sent_rq_per_second, "sent");
+        println!(
+            "{:?} // {:?} // {} requests {} per second",
+            self.node_id, time, sent_rq_per_second, "sent"
+        );
 
-        println!("{:?} // {:?} // {} requests {} per second", self.node_id, time,
-                 recv_rq_per_second, "received");
+        println!(
+            "{:?} // {:?} // {} requests {} per second",
+            self.node_id, time, recv_rq_per_second, "received"
+        );
 
-        self.message_passing_time_taken_own[0].lock().unwrap().log_latency("Message passing (Own)");
-        self.message_passing_time_taken[0].lock().unwrap().log_latency("Message passing");
-        self.message_sending_time_taken[0].lock().unwrap().log_latency("Message sending");
-        self.message_sending_time_taken_own[0].lock().unwrap().log_latency("Message sending (Own)");
-        self.message_signing_time_taken[0].lock().unwrap().log_latency("Message signing");
-        self.message_send_to_create[0].lock().unwrap().log_latency("Create send to objects");
-        self.message_passing_to_send_thread[0].lock().unwrap().log_latency("Message passing send thread");
+        self.message_passing_time_taken_own[0]
+            .lock()
+            .unwrap()
+            .log_latency("Message passing (Own)");
+        self.message_passing_time_taken[0]
+            .lock()
+            .unwrap()
+            .log_latency("Message passing");
+        self.message_sending_time_taken[0]
+            .lock()
+            .unwrap()
+            .log_latency("Message sending");
+        self.message_sending_time_taken_own[0]
+            .lock()
+            .unwrap()
+            .log_latency("Message sending (Own)");
+        self.message_signing_time_taken[0]
+            .lock()
+            .unwrap()
+            .log_latency("Message signing");
+        self.message_send_to_create[0]
+            .lock()
+            .unwrap()
+            .log_latency("Create send to objects");
+        self.message_passing_to_send_thread[0]
+            .lock()
+            .unwrap()
+            .log_latency("Message passing send thread");
     }
 }
 
@@ -375,9 +437,7 @@ pub struct ClientPerf {
     pub message_rcv_vote_time: Vec<Mutex<BenchmarkHelper>>,
 
     pub response_deliver_time: Vec<Mutex<BenchmarkHelper>>,
-
 }
-
 
 #[macro_export]
 macro_rules! measure_time_rq_init {
@@ -387,7 +447,7 @@ macro_rules! measure_time_rq_init {
 
             client_perf.insert_request_init_time(time_taken_rq_init);
         }
-    }
+    };
 }
 
 #[macro_export]
@@ -398,9 +458,8 @@ macro_rules! measure_sent_rq_info {
 
             client_perf.insert_sent_rq_info_time(time_taken_rq_info);
         }
-    }
+    };
 }
-
 
 #[macro_export]
 macro_rules! measure_ready_rq_time {
@@ -410,7 +469,7 @@ macro_rules! measure_ready_rq_time {
 
             client_perf.insert_ready_request_time(time_taken_rq_info);
         }
-    }
+    };
 }
 
 #[macro_export]
@@ -421,9 +480,8 @@ macro_rules! measure_target_init_time {
 
             client_perf.insert_target_init_time(time_taken_rq_info);
         }
-    }
+    };
 }
-
 
 #[macro_export]
 macro_rules! measure_response_rcv_time {
@@ -433,9 +491,8 @@ macro_rules! measure_response_rcv_time {
 
             client_perf.insert_msg_rcv_vote_time(time_taken_rq_info);
         }
-    }
+    };
 }
-
 
 #[macro_export]
 macro_rules! measure_response_deliver_time {
@@ -445,7 +502,7 @@ macro_rules! measure_response_deliver_time {
 
             client_perf.insert_response_deliver_time(time_taken_rq_info);
         }
-    }
+    };
 }
 
 impl ClientPerf {
@@ -460,23 +517,53 @@ impl ClientPerf {
             count: AtomicUsize::new(0),
 
             request_init_time: std::iter::repeat_with(|| {
-                Mutex::new(BenchmarkHelper::new(owner_id, Self::MEASUREMENT_INTERVAL / concurrency_level))
-            }).take(concurrency_level).collect(),
+                Mutex::new(BenchmarkHelper::new(
+                    owner_id,
+                    Self::MEASUREMENT_INTERVAL / concurrency_level,
+                ))
+            })
+            .take(concurrency_level)
+            .collect(),
             sent_request_info_time: std::iter::repeat_with(|| {
-                Mutex::new(BenchmarkHelper::new(owner_id, Self::MEASUREMENT_INTERVAL / concurrency_level))
-            }).take(concurrency_level).collect(),
+                Mutex::new(BenchmarkHelper::new(
+                    owner_id,
+                    Self::MEASUREMENT_INTERVAL / concurrency_level,
+                ))
+            })
+            .take(concurrency_level)
+            .collect(),
             ready_request_time: std::iter::repeat_with(|| {
-                Mutex::new(BenchmarkHelper::new(owner_id, Self::MEASUREMENT_INTERVAL / concurrency_level))
-            }).take(concurrency_level).collect(),
+                Mutex::new(BenchmarkHelper::new(
+                    owner_id,
+                    Self::MEASUREMENT_INTERVAL / concurrency_level,
+                ))
+            })
+            .take(concurrency_level)
+            .collect(),
             target_init_time: std::iter::repeat_with(|| {
-                Mutex::new(BenchmarkHelper::new(owner_id, Self::MEASUREMENT_INTERVAL / concurrency_level))
-            }).take(concurrency_level).collect(),
+                Mutex::new(BenchmarkHelper::new(
+                    owner_id,
+                    Self::MEASUREMENT_INTERVAL / concurrency_level,
+                ))
+            })
+            .take(concurrency_level)
+            .collect(),
             message_rcv_vote_time: std::iter::repeat_with(|| {
-                Mutex::new(BenchmarkHelper::new(owner_id, Self::MEASUREMENT_INTERVAL / concurrency_level))
-            }).take(concurrency_level).collect(),
+                Mutex::new(BenchmarkHelper::new(
+                    owner_id,
+                    Self::MEASUREMENT_INTERVAL / concurrency_level,
+                ))
+            })
+            .take(concurrency_level)
+            .collect(),
             response_deliver_time: std::iter::repeat_with(|| {
-                Mutex::new(BenchmarkHelper::new(owner_id, Self::MEASUREMENT_INTERVAL / concurrency_level))
-            }).take(concurrency_level).collect(),
+                Mutex::new(BenchmarkHelper::new(
+                    owner_id,
+                    Self::MEASUREMENT_INTERVAL / concurrency_level,
+                ))
+            })
+            .take(concurrency_level)
+            .collect(),
         }
     }
 
@@ -520,13 +607,29 @@ impl ClientPerf {
     fn print_data(&self, requests: usize) {
         self.gather_all_info();
 
-        println!("{:?} // --- Measurements after {} ({} samples) ---",
-                 NodeId(1000u32), requests, Self::MEASUREMENT_INTERVAL);
+        println!(
+            "{:?} // --- Measurements after {} ({} samples) ---",
+            NodeId(1000u32),
+            requests,
+            Self::MEASUREMENT_INTERVAL
+        );
 
-        self.request_init_time[0].lock().unwrap().log_latency("Request Init Time");
-        self.sent_request_info_time[0].lock().unwrap().log_latency("Sent Request Info Time");
-        self.ready_request_time[0].lock().unwrap().log_latency("Ready Rq Info Time");
-        self.target_init_time[0].lock().unwrap().log_latency("Targets init time");
+        self.request_init_time[0]
+            .lock()
+            .unwrap()
+            .log_latency("Request Init Time");
+        self.sent_request_info_time[0]
+            .lock()
+            .unwrap()
+            .log_latency("Sent Request Info Time");
+        self.ready_request_time[0]
+            .lock()
+            .unwrap()
+            .log_latency("Ready Rq Info Time");
+        self.target_init_time[0]
+            .lock()
+            .unwrap()
+            .log_latency("Targets init time");
 
         println!("------------------------------------------------------");
     }
@@ -720,12 +823,13 @@ impl BenchmarkHelper {
         let average = self.average(false, false) / 1000.0;
         let std_dev = self.standard_deviation(false, true) / 1000.0;
 
-        println!("{:?} // {:?} // {} latency = {} (+/- {}) us",
-                 id,
-                 Utc::now().timestamp_millis(),
-                 name,
-                 average,
-                 std_dev,
+        println!(
+            "{:?} // {:?} // {} latency = {} (+/- {}) us",
+            id,
+            Utc::now().timestamp_millis(),
+            name,
+            average,
+            std_dev,
         );
 
         self.reset();
@@ -740,11 +844,12 @@ impl BenchmarkHelper {
         let avg = self.average(false, false);
         let std_dev = self.standard_deviation(false, true);
 
-        println!("{:?} // {:?} // Batch average size = {} (+/- {}) requests",
-                 id,
-                 Utc::now().timestamp_millis(),
-                 avg,
-                 std_dev,
+        println!(
+            "{:?} // {:?} // Batch average size = {} (+/- {}) requests",
+            id,
+            Utc::now().timestamp_millis(),
+            avg,
+            std_dev,
         );
 
         self.reset();

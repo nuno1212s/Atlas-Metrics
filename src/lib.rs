@@ -1,6 +1,6 @@
-use atlas_common::node_id::NodeId;
-use crate::metrics::MetricKind;
 use crate::metrics::metrics_thread::launch_metrics;
+use crate::metrics::MetricKind;
+use atlas_common::node_id::NodeId;
 
 pub mod benchmarks;
 pub mod metrics;
@@ -21,12 +21,26 @@ pub struct InfluxDBArgs {
     pub user: String,
     pub password: String,
     pub node_id: NodeId,
-    pub extra: Option<String>
+    pub extra: Option<String>,
 }
 
 impl InfluxDBArgs {
-    pub fn new(ip: String, db_name: String, user: String, password: String, node_id: NodeId, extra: Option<String>) -> Self {
-        Self { ip, db_name, user, password, node_id, extra }
+    pub fn new(
+        ip: String,
+        db_name: String,
+        user: String,
+        password: String,
+        node_id: NodeId,
+        extra: Option<String>,
+    ) -> Self {
+        Self {
+            ip,
+            db_name,
+            user,
+            password,
+            node_id,
+            extra,
+        }
     }
 }
 
@@ -35,7 +49,7 @@ impl InfluxDBArgs {
 pub enum MetricLevel {
     Trace,
     Debug,
-    Info
+    Info,
 }
 
 pub struct MetricRegistryInfo {
@@ -43,7 +57,7 @@ pub struct MetricRegistryInfo {
     name: String,
     kind: MetricKind,
     level: MetricLevel,
-    concurrency_override: Option<usize>
+    concurrency_override: Option<usize>,
 }
 
 pub type MetricRegistry = MetricRegistryInfo;
@@ -97,7 +111,7 @@ impl From<(usize, String, MetricKind)> for MetricRegistryInfo {
             name,
             kind,
             level: MetricLevel::Info,
-            concurrency_override: None
+            concurrency_override: None,
         }
     }
 }
@@ -109,19 +123,27 @@ impl From<(usize, String, MetricKind, MetricLevel)> for MetricRegistryInfo {
             name,
             kind,
             level,
-            concurrency_override: None
+            concurrency_override: None,
         }
     }
 }
 
 impl From<(usize, String, MetricKind, MetricLevel, usize)> for MetricRegistryInfo {
-    fn from((index, name, kind, level, concurrency_override): (usize, String, MetricKind, MetricLevel, usize)) -> Self {
+    fn from(
+        (index, name, kind, level, concurrency_override): (
+            usize,
+            String,
+            MetricKind,
+            MetricLevel,
+            usize,
+        ),
+    ) -> Self {
         Self {
             index,
             name,
             kind,
             level,
-            concurrency_override: Some(concurrency_override)
+            concurrency_override: Some(concurrency_override),
         }
     }
 }

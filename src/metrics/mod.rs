@@ -7,8 +7,8 @@ use log::{error, info};
 use rand::Rng;
 use thread_local::ThreadLocal;
 
-use atlas_common::globals::Global;
 use crate::{MetricLevel, MetricRegistry, MetricRegistryInfo};
+use atlas_common::globals::Global;
 
 pub mod metrics_thread;
 pub(super) mod os_mon;
@@ -65,7 +65,11 @@ pub enum MetricKind {
 }
 
 impl Metrics {
-    fn new(registered_metrics: Vec<MetricRegistry>, metric_level: MetricLevel, concurrency: usize) -> Self {
+    fn new(
+        registered_metrics: Vec<MetricRegistry>,
+        metric_level: MetricLevel,
+        concurrency: usize,
+    ) -> Self {
         let mut largest_ind = 0;
 
         // Calculate the necessary size for the vector
@@ -82,9 +86,12 @@ impl Metrics {
         for metric in registered_metrics {
             let index = metric.index;
 
-            metrics[index] = Some(Metric::new(metric.name, metric.kind,
-                                              metric.level,
-                                              metric.concurrency_override.unwrap_or(concurrency)));
+            metrics[index] = Some(Metric::new(
+                metric.name,
+                metric.kind,
+                metric.level,
+                metric.concurrency_override.unwrap_or(concurrency),
+            ));
 
             live_indexes.push(index);
         }
@@ -100,37 +107,24 @@ impl Metrics {
 impl MetricKind {
     fn gen_metric_type(&self) -> MetricData {
         match self {
-            MetricKind::Duration => {
-                MetricData::Duration(Vec::new())
-            }
-            MetricKind::Counter => {
-                MetricData::Counter(0)
-            }
-            MetricKind::Count => {
-                MetricData::Count(Vec::new())
-            }
+            MetricKind::Duration => MetricData::Duration(Vec::new()),
+            MetricKind::Counter => MetricData::Counter(0),
+            MetricKind::Count => MetricData::Count(Vec::new()),
         }
     }
 
     fn gen_additional_data(&self) -> AdditionalMetricData {
         match self {
-            MetricKind::Duration => {
-                AdditionalMetricData::Duration(None)
-            }
-            MetricKind::Counter => {
-                AdditionalMetricData::Counter
-            }
-            MetricKind::Count => {
-                AdditionalMetricData::Count
-            }
+            MetricKind::Duration => AdditionalMetricData::Duration(None),
+            MetricKind::Counter => AdditionalMetricData::Counter,
+            MetricKind::Count => AdditionalMetricData::Count,
         }
     }
 }
 
 impl Metric {
     fn new(name: String, kind: MetricKind, level: MetricLevel, concurrency: usize) -> Self {
-        let values = iter::repeat_with(||
-            Mutex::new(kind.gen_metric_type()))
+        let values = iter::repeat_with(|| Mutex::new(kind.gen_metric_type()))
             .take(concurrency)
             .collect();
 
@@ -154,12 +148,8 @@ impl Metric {
                     MetricData::Duration(vals) => {
                         MetricData::Duration(Vec::with_capacity(vals.len()))
                     }
-                    MetricData::Counter(_) => {
-                        MetricData::Counter(0)
-                    }
-                    MetricData::Count(vals) => {
-                        MetricData::Count(Vec::with_capacity(vals.len()))
-                    }
+                    MetricData::Counter(_) => MetricData::Counter(0),
+                    MetricData::Count(vals) => MetricData::Count(Vec::with_capacity(vals.len())),
                 };
 
                 std::mem::replace(&mut *value, mt)
@@ -189,9 +179,12 @@ impl MetricData {
     }
 }
 
-
 /// Initialize the metrics module
-pub(super) fn init(registered_metrics: Vec<MetricRegistryInfo>, concurrency: usize, level: MetricLevel) {
+pub(super) fn init(
+    registered_metrics: Vec<MetricRegistryInfo>,
+    concurrency: usize,
+    level: MetricLevel,
+) {
     unsafe {
         METRICS.set(Metrics::new(registered_metrics, level, concurrency));
     }
@@ -199,7 +192,9 @@ pub(super) fn init(registered_metrics: Vec<MetricRegistryInfo>, concurrency: usi
 
 #[inline]
 fn get_current_round_robin(metric: &Metric) -> usize {
-    let current = metric.round_robin.get_or(|| Cell::new(rand::thread_rng().gen_range(0..metric.values.len())));
+    let current = metric
+        .round_robin
+        .get_or(|| Cell::new(rand::thread_rng().gen_range(0..metric.values.len())));
 
     let result = current.get();
 
@@ -213,19 +208,22 @@ fn get_current_round_robin(metric: &Metric) -> usize {
 fn enqueue_duration_measurement(metric: &Metric, duration: u64) {
     let round_robin = get_current_round_robin(metric);
 
-    let mut values = metric.values[round_robin % metric.values.len()].lock().unwrap();
+    let mut values = metric.values[round_robin % metric.values.len()]
+        .lock()
+        .unwrap();
 
     if let MetricData::Duration(ref mut v) = *values {
         v.push(duration);
     }
 }
 
-
 #[inline]
 fn enqueue_counter_measurement(metric: &Metric, count: usize) {
     let round_robin = get_current_round_robin(metric);
 
-    let mut values = metric.values[round_robin % metric.values.len()].lock().unwrap();
+    let mut values = metric.values[round_robin % metric.values.len()]
+        .lock()
+        .unwrap();
 
     if let MetricData::Count(ref mut v) = *values {
         v.push(count)
@@ -251,15 +249,9 @@ fn end_duration_measurement(metric: &Metric) {
         let mut metric_guard = metric.additional_data.lock().unwrap();
 
         match &mut *metric_guard {
-            AdditionalMetricData::Duration(start) => {
-                start.take()
-            }
-            AdditionalMetricData::Counter => {
-                None
-            }
-            AdditionalMetricData::Count => {
-                None
-            }
+            AdditionalMetricData::Duration(start) => start.take(),
+            AdditionalMetricData::Counter => None,
+            AdditionalMetricData::Count => None,
         }
     };
 
@@ -273,7 +265,9 @@ fn end_duration_measurement(metric: &Metric) {
 fn increment_counter_measurement(metric: &Metric, counter: Option<u64>) {
     let round_robin = get_current_round_robin(metric);
 
-    let mut values = metric.values[round_robin % metric.values.len()].lock().unwrap();
+    let mut values = metric.values[round_robin % metric.values.len()]
+        .lock()
+        .unwrap();
 
     if let MetricData::Counter(ref mut v) = *values {
         *v += counter.unwrap_or(1);
@@ -361,7 +355,10 @@ pub fn metric_duration_start(m_index: usize) {
 
                 start_duration_measurement(metric)
             } else {
-                error!("Failed to get metric by index {}. It is probably not registered", m_index);
+                error!(
+                    "Failed to get metric by index {}. It is probably not registered",
+                    m_index
+                );
             }
         }
         None => {}
@@ -381,7 +378,10 @@ pub fn metric_duration_end(m_index: usize) {
 
                 end_duration_measurement(metric)
             } else {
-                error!("Failed to get metric by index {}. It is probably not registered", m_index);
+                error!(
+                    "Failed to get metric by index {}. It is probably not registered",
+                    m_index
+                );
             }
         }
         None => {}
@@ -401,7 +401,10 @@ pub fn metric_duration(m_index: usize, duration: Duration) {
 
                 enqueue_duration_measurement(&metric, duration.as_nanos() as u64);
             } else {
-                error!("Failed to get metric by index {}. It is probably not registered", m_index);
+                error!(
+                    "Failed to get metric by index {}. It is probably not registered",
+                    m_index
+                );
             }
         }
         None => {}
@@ -421,7 +424,10 @@ pub fn metric_increment(m_index: usize, counter: Option<u64>) {
 
                 increment_counter_measurement(&metric, counter);
             } else {
-                error!("Failed to get metric by index {}. It is probably not registered", m_index);
+                error!(
+                    "Failed to get metric by index {}. It is probably not registered",
+                    m_index
+                );
             }
         }
         None => {}
@@ -441,7 +447,10 @@ pub fn metric_store_count(m_index: usize, amount: usize) {
 
                 enqueue_counter_measurement(metric, amount);
             } else {
-                error!("Failed to get metric by index {}. It is probably not registered", m_index);
+                error!(
+                    "Failed to get metric by index {}. It is probably not registered",
+                    m_index
+                );
             }
         }
         None => {}

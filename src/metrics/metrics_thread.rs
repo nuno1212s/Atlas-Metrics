@@ -7,22 +7,26 @@ use log::info;
 use atlas_common::async_runtime as rt;
 use atlas_common::node_id::NodeId;
 
-use crate::{InfluxDBArgs, MetricLevel};
 use crate::metrics::{collect_all_measurements, MetricData};
+use crate::{InfluxDBArgs, MetricLevel};
 
 #[derive(InfluxDbWriteable)]
 pub struct MetricCounterReading {
     time: DateTime<Utc>,
-    #[influxdb(tag)] host: String,
-    #[influxdb(tag)] extra: String,
+    #[influxdb(tag)]
+    host: String,
+    #[influxdb(tag)]
+    extra: String,
     value: i64,
 }
 
 #[derive(InfluxDbWriteable)]
 pub struct MetricDurationReading {
     time: DateTime<Utc>,
-    #[influxdb(tag)] host: String,
-    #[influxdb(tag)] extra: String,
+    #[influxdb(tag)]
+    host: String,
+    #[influxdb(tag)]
+    extra: String,
     value: f64,
     std_dev: f64,
 }
@@ -30,8 +34,10 @@ pub struct MetricDurationReading {
 #[derive(InfluxDbWriteable)]
 pub struct MetricCountReading {
     time: DateTime<Utc>,
-    #[influxdb(tag)] host: String,
-    #[influxdb(tag)] extra: String,
+    #[influxdb(tag)]
+    host: String,
+    #[influxdb(tag)]
+    extra: String,
     value: f64,
     std_dev: f64,
 }
@@ -45,7 +51,12 @@ pub fn launch_metrics(influx_args: InfluxDBArgs, metric_level: MetricLevel) {
 /// The metrics thread. Collects all values from the metrics and sends them to influx db
 pub fn metric_thread_loop(influx_args: InfluxDBArgs, metric_level: MetricLevel) {
     let InfluxDBArgs {
-        ip, db_name, user, password, node_id, extra
+        ip,
+        db_name,
+        user,
+        password,
+        node_id,
+        extra,
     } = influx_args;
 
     let mut client = influxdb::Client::new(format!("{}", ip), db_name);
@@ -80,7 +91,8 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs, metric_level: MetricLevel) 
                         extra: extra.clone(),
                         value: duration_avg,
                         std_dev: dur,
-                    }.into_query(metric_name)
+                    }
+                    .into_query(metric_name)
                 }
                 MetricData::Counter(count) => {
                     MetricCounterReading {
@@ -89,7 +101,8 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs, metric_level: MetricLevel) 
                         extra: extra.clone(),
                         // Could lose some information, but the driver did NOT like u64
                         value: count as i64,
-                    }.into_query(metric_name)
+                    }
+                    .into_query(metric_name)
                 }
                 MetricData::Count(counts) => {
                     if counts.is_empty() {
@@ -106,14 +119,16 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs, metric_level: MetricLevel) 
                         extra: extra.clone(),
                         value: count_avg,
                         std_dev: dur,
-                    }.into_query(metric_name)
+                    }
+                    .into_query(metric_name)
                 }
             };
 
             readings.push(query);
         }
 
-        let result = rt::block_on(client.query(readings)).expect("Failed to write metrics to influxdb");
+        let result =
+            rt::block_on(client.query(readings)).expect("Failed to write metrics to influxdb");
 
         info!("Result of writing metrics: {:?}", result);
 
@@ -134,15 +149,19 @@ fn mean(data: &[u64]) -> Option<f64> {
 fn std_deviation(data: &[u64]) -> Option<f64> {
     match (mean(data), data.len()) {
         (Some(data_mean), count) if count > 0 => {
-            let variance = data.iter().map(|value| {
-                let diff = data_mean - (*value as f64);
+            let variance = data
+                .iter()
+                .map(|value| {
+                    let diff = data_mean - (*value as f64);
 
-                diff * diff
-            }).sum::<f64>() / count as f64;
+                    diff * diff
+                })
+                .sum::<f64>()
+                / count as f64;
 
             Some(variance.sqrt())
-        },
-        _ => None
+        }
+        _ => None,
     }
 }
 
@@ -159,14 +178,18 @@ fn mean_usize(data: &[usize]) -> Option<f64> {
 fn std_deviation_usize(data: &[usize]) -> Option<f64> {
     match (mean_usize(data), data.len()) {
         (Some(data_mean), count) if count > 0 => {
-            let variance = data.iter().map(|value| {
-                let diff = data_mean - (*value as f64);
+            let variance = data
+                .iter()
+                .map(|value| {
+                    let diff = data_mean - (*value as f64);
 
-                diff * diff
-            }).sum::<f64>() / count as f64;
+                    diff * diff
+                })
+                .sum::<f64>()
+                / count as f64;
 
             Some(variance.sqrt())
-        },
-        _ => None
+        }
+        _ => None,
     }
 }
