@@ -6,7 +6,6 @@ use log::info;
 
 use atlas_common::async_runtime as rt;
 
-
 use crate::metrics::{collect_all_measurements, MetricData};
 use crate::{InfluxDBArgs, MetricLevel};
 

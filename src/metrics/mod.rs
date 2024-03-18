@@ -3,7 +3,7 @@ use std::iter;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use log::{error};
+use log::error;
 use rand::Rng;
 use thread_local::ThreadLocal;
 
@@ -276,8 +276,6 @@ fn increment_counter_measurement(metric: &Metric, counter: Option<u64>) {
 
 /// Collect all measurements from a given metric
 fn collect_measurements(metric: &Metric) -> Vec<MetricData> {
-    
-
     metric.take_values()
 }
 
@@ -320,8 +318,6 @@ fn join_metrics(mut metrics: Vec<MetricData>) -> MetricData {
     let mut first = metrics.swap_remove(0);
 
     while let Some(metric) = metrics.pop() {
-        
-
         first.merge(metric)
     }
 
