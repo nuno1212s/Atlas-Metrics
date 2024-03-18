@@ -333,8 +333,8 @@ impl CommStatsHelper {
     }
 
     fn register_rq(&self, counter: &AtomicUsize) -> usize {
-        let requests = counter.fetch_add(1, Ordering::Relaxed);
-        requests
+        
+        counter.fetch_add(1, Ordering::Relaxed)
     }
 
     pub fn register_rq_received(&self) {
@@ -357,7 +357,7 @@ impl CommStatsHelper {
         let (previous_instant, prev_sent_rqs, prev_recvd_rqs) = {
             let mut guard = self.requests_last_mark.lock().unwrap();
 
-            let instant_replica = current_instant.clone();
+            let instant_replica = current_instant;
 
             std::mem::replace(
                 &mut *guard,
@@ -383,13 +383,13 @@ impl CommStatsHelper {
         let time = Utc::now().timestamp_millis();
 
         println!(
-            "{:?} // {:?} // {} requests {} per second",
-            self.node_id, time, sent_rq_per_second, "sent"
+            "{:?} // {:?} // {} requests sent per second",
+            self.node_id, time, sent_rq_per_second
         );
 
         println!(
-            "{:?} // {:?} // {} requests {} per second",
-            self.node_id, time, recv_rq_per_second, "received"
+            "{:?} // {:?} // {} requests received per second",
+            self.node_id, time, recv_rq_per_second
         );
 
         self.message_passing_time_taken_own[0]
@@ -503,6 +503,12 @@ macro_rules! measure_response_deliver_time {
             client_perf.insert_response_deliver_time(time_taken_rq_info);
         }
     };
+}
+
+impl Default for ClientPerf {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ClientPerf {
@@ -703,6 +709,12 @@ pub struct BatchMeta {
     pub first_commit_received: DateTime<Utc>,
 }
 
+impl Default for BatchMeta {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BatchMeta {
     pub fn new() -> Self {
         Self::new_with_cap(None)
@@ -765,7 +777,7 @@ impl BenchmarkHelper {
 
         values.sort_unstable();
 
-        (&values[limit..(values.len() - limit)])
+        values[limit..(values.len() - limit)]
             .iter()
             .copied()
             .max()
@@ -779,7 +791,7 @@ impl BenchmarkHelper {
             self.values.sort_unstable();
         }
 
-        let count = (&self.values[limit..(self.values.len() - limit)])
+        let count = self.values[limit..(self.values.len() - limit)]
             .iter()
             .copied()
             .reduce(|x, y| x.wrapping_add(y))
@@ -802,7 +814,7 @@ impl BenchmarkHelper {
 
         let med = self.average(percent, true);
 
-        let quad = (&self.values[limit..(self.values.len() - limit)])
+        let quad = self.values[limit..(self.values.len() - limit)]
             .iter()
             .copied()
             .map(|x| x.wrapping_mul(x))
@@ -818,7 +830,7 @@ impl BenchmarkHelper {
     #[inline(always)]
     ///Returns the average and the standard deviation
     pub fn log_latency(&mut self, name: &str) -> (f64, f64) {
-        let id = self.node.clone();
+        let id = self.node;
 
         let average = self.average(false, false) / 1000.0;
         let std_dev = self.standard_deviation(false, true) / 1000.0;
@@ -839,7 +851,7 @@ impl BenchmarkHelper {
 
     #[inline(always)]
     pub fn log_batch(&mut self) -> (f64, f64) {
-        let id = self.node.clone();
+        let id = self.node;
 
         let avg = self.average(false, false);
         let std_dev = self.standard_deviation(false, true);
@@ -888,7 +900,7 @@ fn gather_rqs(to_gather: &Vec<Mutex<BenchmarkHelper>>) {
     let mut first_elem = to_gather[0].lock().unwrap();
 
     for i in 1..to_gather.len() {
-        first_elem.merge(&mut *to_gather[i].lock().unwrap());
+        first_elem.merge(&mut to_gather[i].lock().unwrap());
     }
 }
 

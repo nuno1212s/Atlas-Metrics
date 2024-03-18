@@ -1,6 +1,6 @@
 use crate::InfluxDBArgs;
 use atlas_common::async_runtime as rt;
-use atlas_common::node_id::NodeId;
+
 use chrono::{DateTime, Utc};
 use influxdb::InfluxDbWriteable;
 use std::time::Duration;
@@ -63,7 +63,7 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs) {
         extra,
     } = influx_args;
 
-    let mut client = influxdb::Client::new(format!("{}", ip), db_name);
+    let mut client = influxdb::Client::new(ip.to_string(), db_name);
 
     client = client.with_auth(user, password);
 
@@ -142,7 +142,7 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs) {
             .into_query(OS_RAM_USAGE),
         );
 
-        let result =
+        let _result =
             rt::block_on(client.query(readings)).expect("Failed to write metrics to influxdb");
 
         std::thread::sleep(Duration::from_millis(250));

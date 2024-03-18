@@ -3,7 +3,7 @@ use std::iter;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use log::{error, info};
+use log::{error};
 use rand::Rng;
 use thread_local::ThreadLocal;
 
@@ -276,15 +276,15 @@ fn increment_counter_measurement(metric: &Metric, counter: Option<u64>) {
 
 /// Collect all measurements from a given metric
 fn collect_measurements(metric: &Metric) -> Vec<MetricData> {
-    let metric1 = metric.take_values();
+    
 
-    metric1
+    metric.take_values()
 }
 
 /// Collect all measurements from all metrics
 fn collect_all_measurements(level: &MetricLevel) -> Vec<(String, MetricData)> {
     match unsafe { METRICS.get() } {
-        Some(ref metrics) => {
+        Some(metrics) => {
             let mut collected_metrics = Vec::with_capacity(metrics.metrics.len());
 
             for index in &metrics.live_indexes {
@@ -319,8 +319,8 @@ fn join_metrics(mut metrics: Vec<MetricData>) -> MetricData {
 
     let mut first = metrics.swap_remove(0);
 
-    while !metrics.is_empty() {
-        let metric = metrics.pop().unwrap();
+    while let Some(metric) = metrics.pop() {
+        
 
         first.merge(metric)
     }
@@ -399,7 +399,7 @@ pub fn metric_duration(m_index: usize, duration: Duration) {
                     return;
                 }
 
-                enqueue_duration_measurement(&metric, duration.as_nanos() as u64);
+                enqueue_duration_measurement(metric, duration.as_nanos() as u64);
             } else {
                 error!(
                     "Failed to get metric by index {}. It is probably not registered",
@@ -422,7 +422,7 @@ pub fn metric_increment(m_index: usize, counter: Option<u64>) {
                     return;
                 }
 
-                increment_counter_measurement(&metric, counter);
+                increment_counter_measurement(metric, counter);
             } else {
                 error!(
                     "Failed to get metric by index {}. It is probably not registered",

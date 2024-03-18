@@ -5,7 +5,7 @@ use influxdb::InfluxDbWriteable;
 use log::info;
 
 use atlas_common::async_runtime as rt;
-use atlas_common::node_id::NodeId;
+
 
 use crate::metrics::{collect_all_measurements, MetricData};
 use crate::{InfluxDBArgs, MetricLevel};
@@ -59,7 +59,7 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs, metric_level: MetricLevel) 
         extra,
     } = influx_args;
 
-    let mut client = influxdb::Client::new(format!("{}", ip), db_name);
+    let mut client = influxdb::Client::new(ip.to_string(), db_name);
 
     client = client.with_auth(user, password);
 

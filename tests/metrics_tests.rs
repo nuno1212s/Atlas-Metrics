@@ -15,7 +15,7 @@ mod metrics_tests {
 
     #[test]
     fn test_data_collection() {
-        let option = unsafe {
+        let _option = unsafe {
             init(InitConfig {
                 async_threads: 1,
                 threadpool_threads: 1,
