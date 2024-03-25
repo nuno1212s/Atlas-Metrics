@@ -137,7 +137,7 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs) {
                 time,
                 host: host_name.clone(),
                 extra: extra.clone(),
-                value: (memory_stats.data * 4096) as i64,
+                value: (memory_stats.data * page_size::get()) as i64,
             }
             .into_query(OS_RAM_USAGE),
         );

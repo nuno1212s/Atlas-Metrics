@@ -16,3 +16,4 @@ log = "0.4.17"
 
 mprober-lib = "0.1.7"
 procinfo = "0.4.2"
+page_size = "0.6.0"
