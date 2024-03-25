@@ -2,6 +2,7 @@ use std::cell::Cell;
 use std::iter;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
+use chrono::{DateTime, Utc};
 
 use log::error;
 use rand::Rng;
@@ -213,7 +214,7 @@ fn enqueue_duration_measurement(metric: &Metric, duration: u64) {
         .unwrap();
 
     if let MetricData::Duration(ref mut v) = *values {
-        v.push(duration);
+        v.push( duration);
     }
 }
 
@@ -226,7 +227,7 @@ fn enqueue_counter_measurement(metric: &Metric, count: usize) {
         .unwrap();
 
     if let MetricData::Count(ref mut v) = *values {
-        v.push(count)
+        v.push(count);
     }
 }
 
@@ -340,115 +341,100 @@ pub fn metric_local_duration_end(metric: usize, start: Instant) {
 
 #[inline]
 pub fn metric_duration_start(m_index: usize) {
-    match unsafe { METRICS.get() } {
-        Some(ref metrics) => {
-            let metric = metric_at_index(metrics, m_index);
+    if let Some(ref metrics) = unsafe { METRICS.get() } {
+        let metric = metric_at_index(metrics, m_index);
 
-            if let Some(metric) = metric {
-                if metric.metric_level < metrics.current_level {
-                    return;
-                }
-
-                start_duration_measurement(metric)
-            } else {
-                error!(
-                    "Failed to get metric by index {}. It is probably not registered",
-                    m_index
-                );
+        if let Some(metric) = metric {
+            if metric.metric_level < metrics.current_level {
+                return;
             }
+
+            start_duration_measurement(metric)
+        } else {
+            error!(
+                "Failed to get metric by index {}. It is probably not registered",
+                m_index
+            );
         }
-        None => {}
     }
 }
 
 #[inline]
 pub fn metric_duration_end(m_index: usize) {
-    match unsafe { METRICS.get() } {
-        Some(ref metrics) => {
-            let metric = metric_at_index(metrics, m_index);
+    if let Some(ref metrics) = unsafe { METRICS.get() } {
+        let metric = metric_at_index(metrics, m_index);
 
-            if let Some(metric) = metric {
-                if metric.metric_level < metrics.current_level {
-                    return;
-                }
-
-                end_duration_measurement(metric)
-            } else {
-                error!(
-                    "Failed to get metric by index {}. It is probably not registered",
-                    m_index
-                );
+        if let Some(metric) = metric {
+            if metric.metric_level < metrics.current_level {
+                return;
             }
+
+            end_duration_measurement(metric)
+        } else {
+            error!(
+                "Failed to get metric by index {}. It is probably not registered",
+                m_index
+            );
         }
-        None => {}
     }
 }
 
 #[inline]
 pub fn metric_duration(m_index: usize, duration: Duration) {
-    match unsafe { METRICS.get() } {
-        Some(ref metrics) => {
-            let metric = metric_at_index(metrics, m_index);
+    if let Some(ref metrics) = unsafe { METRICS.get() } {
+        let metric = metric_at_index(metrics, m_index);
 
-            if let Some(metric) = metric {
-                if metric.metric_level < metrics.current_level {
-                    return;
-                }
-
-                enqueue_duration_measurement(metric, duration.as_nanos() as u64);
-            } else {
-                error!(
-                    "Failed to get metric by index {}. It is probably not registered",
-                    m_index
-                );
+        if let Some(metric) = metric {
+            if metric.metric_level < metrics.current_level {
+                return;
             }
+
+            enqueue_duration_measurement(metric, duration.as_nanos() as u64);
+        } else {
+            error!(
+                "Failed to get metric by index {}. It is probably not registered",
+                m_index
+            );
         }
-        None => {}
     }
 }
 
 #[inline]
 pub fn metric_increment(m_index: usize, counter: Option<u64>) {
-    match unsafe { METRICS.get() } {
-        Some(ref metrics) => {
-            let metric = metric_at_index(metrics, m_index);
+    if let Some(ref metrics) = unsafe { METRICS.get() } {
+        let metric = metric_at_index(metrics, m_index);
 
-            if let Some(metric) = metric {
-                if metric.metric_level < metrics.current_level {
-                    return;
-                }
-
-                increment_counter_measurement(metric, counter);
-            } else {
-                error!(
-                    "Failed to get metric by index {}. It is probably not registered",
-                    m_index
-                );
+        if let Some(metric) = metric {
+            if metric.metric_level < metrics.current_level {
+                return;
             }
+
+            increment_counter_measurement(metric, counter);
+        } else {
+            error!(
+                "Failed to get metric by index {}. It is probably not registered",
+                m_index
+            );
         }
-        None => {}
     }
 }
 
 #[inline]
 pub fn metric_store_count(m_index: usize, amount: usize) {
-    match unsafe { METRICS.get() } {
-        Some(ref metrics) => {
-            let metric = metric_at_index(metrics, m_index);
+    if let Some(ref metrics) = unsafe { METRICS.get() } {
+        let metric = metric_at_index(metrics, m_index);
 
-            if let Some(metric) = metric {
-                if metric.metric_level < metrics.current_level {
-                    return;
-                }
-
-                enqueue_counter_measurement(metric, amount);
-            } else {
-                error!(
-                    "Failed to get metric by index {}. It is probably not registered",
-                    m_index
-                );
+        if let Some(metric) = metric {
+            if metric.metric_level < metrics.current_level {
+                return;
             }
+
+            enqueue_counter_measurement(metric, amount);
+        } else {
+            error!(
+                "Failed to get metric by index {}. It is probably not registered",
+                m_index
+            );
         }
-        None => {}
     }
 }

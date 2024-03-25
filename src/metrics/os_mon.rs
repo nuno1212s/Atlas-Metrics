@@ -89,7 +89,7 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs) {
                 host: host_name.clone(),
                 extra: extra.clone(),
                 cpu: curr_cpu,
-                value: usage,
+                value: usage.min(1.0),
             }
             .into_query(OS_CPU_USER);
 
