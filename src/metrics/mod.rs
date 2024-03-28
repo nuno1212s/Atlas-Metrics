@@ -1,8 +1,8 @@
+use chrono::{DateTime, Utc};
 use std::cell::Cell;
 use std::iter;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
-use chrono::{DateTime, Utc};
 
 use log::error;
 use rand::Rng;
@@ -214,7 +214,7 @@ fn enqueue_duration_measurement(metric: &Metric, duration: u64) {
         .unwrap();
 
     if let MetricData::Duration(ref mut v) = *values {
-        v.push( duration);
+        v.push(duration);
     }
 }
 
