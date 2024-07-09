@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use influxdb::InfluxDbWriteable;
-use log::info;
+use log::{debug};
 
 use atlas_common::async_runtime as rt;
 
@@ -129,7 +129,7 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs, metric_level: MetricLevel) 
         let result =
             rt::block_on(client.query(readings)).expect("Failed to write metrics to influxdb");
 
-        info!("Result of writing metrics: {:?}", result);
+        debug!("Result of writing metrics: {:?}", result);
 
         std::thread::sleep(Duration::from_millis(1000));
     }
