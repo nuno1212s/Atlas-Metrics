@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use influxdb::InfluxDbWriteable;
-use log::{debug};
+use log::{debug, info};
 
 use atlas_common::async_runtime as rt;
 
@@ -58,6 +58,8 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs, metric_level: MetricLevel) 
         extra,
     } = influx_args;
 
+    info!("Initializing metrics thread with test name: {:?}", extra);
+    
     let mut client = influxdb::Client::new(ip.to_string(), db_name);
 
     client = client.with_auth(user, password);
