@@ -4,6 +4,7 @@ use atlas_common::node_id::NodeId;
 
 pub mod benchmarks;
 pub mod metrics;
+mod tests;
 
 pub type MetricsArgsFunc = Box<dyn FnOnce(&mut MetricsArgs)>;
 
