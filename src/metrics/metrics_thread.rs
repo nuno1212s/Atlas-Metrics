@@ -69,6 +69,16 @@ pub struct MetricCorrelationTimeReading {
     value: i64,
 }
 
+#[derive(InfluxDbWriteable)]
+pub struct MetricCorrelationAggrTimeReading {
+    time: DateTime<Utc>,
+    #[influxdb(tag)]
+    host: String,
+    #[influxdb(tag)]
+    extra: String,
+    value: i64,
+}
+
 pub fn launch_metrics(influx_args: InfluxDBArgs, metric_level: MetricLevel) {
     std::thread::spawn(move || {
         metric_thread_loop(influx_args, metric_level);
@@ -215,6 +225,26 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs, metric_level: MetricLevel) 
 
                     vec
                 }
+                MetricData::CorrelationAggrDurationTracker(tracker) => {
+                    let mut duration = tracker
+                        .accumulated
+                        .iter()
+                        .map(|item| item.value().as_nanos())
+                        .reduce(|tracked, tracked_2| tracked + tracked_2)
+                        .unwrap_or(0);
+
+                    duration /= std::cmp::max(1, tracker.accumulated.len() as u128);
+
+                    MaybeVec::from_one(
+                        MetricCorrelationAggrTimeReading {
+                            time,
+                            host: host_name.clone(),
+                            extra: extra.clone(),
+                            value: duration as i64,
+                        }
+                        .into_query(metric_name),
+                    )
+                }
             };
 
             match query {
@@ -242,7 +272,9 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs, metric_level: MetricLevel) 
                     Err(e) => Err(anyhow::Error::new(e)),
                 }
             });
+
         let time_taken = instant.elapsed();
+
         debug!(
             "Result of writing metrics: {:?} in {:?}. Wrote {} metrics",
             result, time_taken, readings_to_write

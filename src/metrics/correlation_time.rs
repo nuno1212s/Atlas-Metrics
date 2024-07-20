@@ -11,20 +11,22 @@ pub(super) struct CorrelationTimeTracker {
 }
 
 pub(crate) fn start_correlation_time_tracker(metric: &Metric, id: Arc<str>) {
-    if let MetricData::CorrelationDurationTracker(tracker) = metric.value().get_metric_data() {
-        tracker.time_track.insert(id, Instant::now());
-    } else {
-        unreachable!("Metric {:?} is not a CorrelationTime metric", metric)
+    match metric.value().get_metric_data() {
+        MetricData::CorrelationDurationTracker(tracker) |MetricData::CorrelationAggrDurationTracker(tracker) => {
+            tracker.time_track.insert(id, Instant::now());
+        }
+        _ => unreachable!("Metric {:?} is not a CorrelationTime metric", metric)
     }
 }
 
 pub(crate) fn end_correlation_time_tracker(metric: &Metric, id: Arc<str>) {
-    if let MetricData::CorrelationDurationTracker(tracker) = metric.value().get_metric_data() {
-        if let Some((correlation, init_time)) = tracker.time_track.remove(&id) {
-            tracker.accumulated.insert(correlation, init_time.elapsed());
+    match metric.value().get_metric_data() {
+        MetricData::CorrelationDurationTracker(tracker) | MetricData::CorrelationAggrDurationTracker(tracker) => {
+            if let Some((correlation, init_time)) = tracker.time_track.remove(&id) {
+                tracker.accumulated.insert(correlation, init_time.elapsed());
+            }
         }
-    } else {
-        unreachable!("Metric {:?} is not a CorrelationTime metric", metric)
+        _ => unreachable!("Metric {:?} is not a CorrelationTime metric", metric)
     }
 }
 

@@ -63,6 +63,8 @@ pub(super) enum MetricData {
     Correlation(CorrelationTracker),
 
     CorrelationDurationTracker(CorrelationTimeTracker),
+
+    CorrelationAggrDurationTracker(CorrelationTimeTracker),
 }
 
 #[derive(Debug)]
@@ -89,7 +91,9 @@ pub enum MetricKind {
 
     Correlation,
 
-    CorrelationTracker,
+    CorrelationDurationTracker,
+
+    CorrelationAggrDurationTracker,
 }
 
 impl Metrics {
@@ -158,8 +162,11 @@ impl MetricKind {
             MetricKind::Counter => MetricData::Counter(AtomicU64::new(0)),
             MetricKind::Count => MetricData::Count(Vec::new()),
             MetricKind::Correlation => MetricData::Correlation(Default::default()),
-            MetricKind::CorrelationTracker => {
+            MetricKind::CorrelationDurationTracker => {
                 MetricData::CorrelationDurationTracker(Default::default())
+            }
+            MetricKind::CorrelationAggrDurationTracker => {
+                MetricData::CorrelationAggrDurationTracker(Default::default())
             }
         }
     }
@@ -170,7 +177,9 @@ impl MetricKind {
             MetricKind::Counter => AdditionalMetricData::Counter,
             MetricKind::Count => AdditionalMetricData::Count,
             MetricKind::Correlation => AdditionalMetricData::Correlation,
-            MetricKind::CorrelationTracker => AdditionalMetricData::Correlation,
+            MetricKind::CorrelationDurationTracker | MetricKind::CorrelationAggrDurationTracker => {
+                AdditionalMetricData::Correlation
+            }
         }
     }
 }
@@ -208,6 +217,9 @@ impl Metric {
                             }
                             MetricData::CorrelationDurationTracker(_) => {
                                 MetricData::CorrelationDurationTracker(Default::default())
+                            }
+                            MetricData::CorrelationAggrDurationTracker(_) => {
+                                MetricData::CorrelationAggrDurationTracker(Default::default())
                             }
                         };
 
@@ -249,8 +261,8 @@ impl Metric {
 
                 let previous_value = *unsafe { Box::from_raw(previous_value) };
 
-                let previous_value =
-                    if let MetricData::CorrelationDurationTracker(tracker) = previous_value {
+                let previous_value = match previous_value {
+                    MetricData::CorrelationDurationTracker(tracker) => {
                         // Pass the time track to the new value as we want to keep the pending ones
                         let CorrelationTimeTracker {
                             time_track,
@@ -271,9 +283,31 @@ impl Metric {
                             time_track: Default::default(),
                             accumulated,
                         })
-                    } else {
-                        previous_value
-                    };
+                    }
+                    MetricData::CorrelationAggrDurationTracker(tracker) => {
+                        // Pass the time track to the new value as we want to keep the pending ones
+                        let CorrelationTimeTracker {
+                            time_track,
+                            accumulated,
+                        } = tracker;
+
+                        let new_value =
+                            MetricData::CorrelationAggrDurationTracker(CorrelationTimeTracker {
+                                time_track,
+                                accumulated: Default::default(),
+                            });
+
+                        destroy_pointer(
+                            reference.swap(Box::into_raw(new_value.into()), Ordering::Relaxed),
+                        );
+
+                        MetricData::CorrelationAggrDurationTracker(CorrelationTimeTracker {
+                            time_track: Default::default(),
+                            accumulated,
+                        })
+                    }
+                    _ => previous_value,
+                };
 
                 vec![previous_value]
             }
