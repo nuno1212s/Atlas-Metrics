@@ -48,6 +48,7 @@ impl InfluxDBArgs {
 /// The levels of metrics available for this
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Ord, Eq)]
 pub enum MetricLevel {
+    Disabled,
     Trace,
     Debug,
     Info,

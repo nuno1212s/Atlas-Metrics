@@ -88,11 +88,11 @@ pub enum MetricKind {
     Counter,
     /// A count is to be used to store various independent counts and then average them together
     Count,
-
+    /// Metrics for correlation ID tracking
     Correlation,
-
+    /// Duration with correlation, individually addressed
     CorrelationDurationTracker,
-
+    /// Duration with correlation, aggregated
     CorrelationAggrDurationTracker,
 }
 
