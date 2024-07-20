@@ -20,7 +20,7 @@ pub(super) struct CorrelationEventOccurrence {
 
 #[derive(Default)]
 pub(super) struct CorrelationTracker {
-    pub(crate) map: DashMap<Arc<str>, Vec<CorrelationEventOccurrence>>
+    pub(crate) map: DashMap<Arc<str>, Vec<CorrelationEventOccurrence>>,
 }
 
 impl Debug for CorrelationTracker {
@@ -47,13 +47,9 @@ fn with_correlation_tracker(
     f: impl FnOnce(&mut Vec<CorrelationEventOccurrence>),
 ) {
     if let MetricData::Correlation(tracker) = metric.value().get_metric_data() {
-        let mut entry = tracker
-            .map
-            .entry(id)
-            .or_insert_with(|| Vec::new());
-        
-        let correlation_id_events = entry
-            .value_mut();
+        let mut entry = tracker.map.entry(id).or_insert_with(|| Vec::new());
+
+        let correlation_id_events = entry.value_mut();
 
         f(correlation_id_events)
     } else {
@@ -63,23 +59,21 @@ fn with_correlation_tracker(
 
 pub(crate) fn register_correlation_id(metric: &Metric, id: Arc<str>, location: Arc<str>) {
     with_correlation_tracker(metric, id, |correlation_id_events| {
-        correlation_id_events
-            .push(CorrelationEventOccurrence {
-                date: Utc::now(),
-                event: CorrelationEvent::Initialized,
-                location,
-            });
+        correlation_id_events.push(CorrelationEventOccurrence {
+            date: Utc::now(),
+            event: CorrelationEvent::Initialized,
+            location,
+        });
     });
 }
 
 pub(crate) fn pass_correlation_id(metric: &Metric, id: Arc<str>, location: Arc<str>) {
     with_correlation_tracker(metric, id, |correlation_id_events| {
-        correlation_id_events
-            .push(CorrelationEventOccurrence {
-                date: Utc::now(),
-                event: CorrelationEvent::Passed,
-                location,
-            });
+        correlation_id_events.push(CorrelationEventOccurrence {
+            date: Utc::now(),
+            event: CorrelationEvent::Passed,
+            location,
+        });
     });
 }
 
@@ -90,33 +84,30 @@ pub(crate) fn encapsulate_correlation_id(
     (encapsulating_metric_id, correlation_id): (usize, Arc<str>),
 ) {
     with_correlation_tracker(metric, id, |correlation_id_events| {
-        correlation_id_events
-            .push(CorrelationEventOccurrence {
-                date: Utc::now(),
-                event: CorrelationEvent::Encapsulated(encapsulating_metric_id, correlation_id),
-                location,
-            });
+        correlation_id_events.push(CorrelationEventOccurrence {
+            date: Utc::now(),
+            event: CorrelationEvent::Encapsulated(encapsulating_metric_id, correlation_id),
+            location,
+        });
     });
 }
 
 pub(crate) fn decapsulate_correlation_id(metric: &Metric, id: Arc<str>, location: Arc<str>) {
     with_correlation_tracker(metric, id, |correlation_id_events| {
-        correlation_id_events
-            .push(CorrelationEventOccurrence {
-                date: Utc::now(),
-                event: CorrelationEvent::Decapsulated,
-                location,
-            });
+        correlation_id_events.push(CorrelationEventOccurrence {
+            date: Utc::now(),
+            event: CorrelationEvent::Decapsulated,
+            location,
+        });
     });
 }
 
 pub(crate) fn end_correlation_id(metric: &Metric, id: Arc<str>, location: Arc<str>) {
     with_correlation_tracker(metric, id, |correlation_id_events| {
-        correlation_id_events
-            .push(CorrelationEventOccurrence {
-                date: Utc::now(),
-                event: CorrelationEvent::Ended,
-                location,
-            });
+        correlation_id_events.push(CorrelationEventOccurrence {
+            date: Utc::now(),
+            event: CorrelationEvent::Ended,
+            location,
+        });
     });
 }

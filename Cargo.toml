@@ -9,12 +9,13 @@ edition = "2021"
 getset = "*"
 atlas-common = {path = "../Atlas-Common"}
 chrono = "*"
-influxdb = {version = "0.6", features= ["derive"] }
+influxdb = {version = "0.7.2", features= ["derive"] }
 thread_local = "*"
 rand = "*"
 lazy_static = "*"
 tracing = "*"
 dashmap = "*"
+anyhow = "*"
 
 mprober-lib = "*"
 procinfo = "*"

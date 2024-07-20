@@ -16,13 +16,13 @@ use crate::metrics::correlation_ids::{
     encapsulate_correlation_id, end_correlation_id, pass_correlation_id, register_correlation_id,
     CorrelationTracker,
 };
-use crate::{MetricLevel, MetricRegistry, MetricRegistryInfo};
 use crate::metrics::correlation_time::CorrelationTimeTracker;
+use crate::{MetricLevel, MetricRegistry, MetricRegistryInfo};
 
 mod correlation_ids;
+mod correlation_time;
 pub mod metrics_thread;
 pub(super) mod os_mon;
-mod correlation_time;
 
 static mut METRICS: Global<Metrics> = Global::new();
 
@@ -61,8 +61,8 @@ pub(super) enum MetricData {
     Count(Vec<usize>),
 
     Correlation(CorrelationTracker),
-    
-    CorrelationDurationTracker(CorrelationTimeTracker)
+
+    CorrelationDurationTracker(CorrelationTimeTracker),
 }
 
 #[derive(Debug)]
@@ -88,8 +88,8 @@ pub enum MetricKind {
     Count,
 
     Correlation,
-    
-    CorrelationTracker
+
+    CorrelationTracker,
 }
 
 impl Metrics {
@@ -158,7 +158,9 @@ impl MetricKind {
             MetricKind::Counter => MetricData::Counter(AtomicU64::new(0)),
             MetricKind::Count => MetricData::Count(Vec::new()),
             MetricKind::Correlation => MetricData::Correlation(Default::default()),
-            MetricKind::CorrelationTracker => MetricData::CorrelationDurationTracker(Default::default())
+            MetricKind::CorrelationTracker => {
+                MetricData::CorrelationDurationTracker(Default::default())
+            }
         }
     }
 
@@ -168,7 +170,7 @@ impl MetricKind {
             MetricKind::Counter => AdditionalMetricData::Counter,
             MetricKind::Count => AdditionalMetricData::Count,
             MetricKind::Correlation => AdditionalMetricData::Correlation,
-            MetricKind::CorrelationTracker => AdditionalMetricData::Correlation
+            MetricKind::CorrelationTracker => AdditionalMetricData::Correlation,
         }
     }
 }
@@ -208,22 +210,23 @@ impl Metric {
                                 MetricData::CorrelationDurationTracker(Default::default())
                             }
                         };
-                        
-                        let prev_value = std::mem::replace(&mut *value, mt);
-                        
-                        if let MetricData::CorrelationDurationTracker(tracker) = prev_value {
-                            if let MetricData::CorrelationDurationTracker(curr_tracker) = &mut *value {
 
+                        let prev_value = std::mem::replace(&mut *value, mt);
+
+                        if let MetricData::CorrelationDurationTracker(tracker) = prev_value {
+                            if let MetricData::CorrelationDurationTracker(curr_tracker) =
+                                &mut *value
+                            {
                                 let CorrelationTimeTracker {
                                     time_track,
-                                    accumulated
+                                    accumulated,
                                 } = tracker;
 
                                 curr_tracker.time_track = time_track;
 
                                 MetricData::CorrelationDurationTracker(CorrelationTimeTracker {
                                     time_track: Default::default(),
-                                    accumulated
+                                    accumulated,
                                 })
                             } else {
                                 unreachable!("How this metric data be replaced by something else?")
@@ -232,7 +235,7 @@ impl Metric {
                             prev_value
                         }
                     };
-                    
+
                     collected_values.push(metric_type);
                 });
 
@@ -245,33 +248,33 @@ impl Metric {
                 );
 
                 let previous_value = *unsafe { Box::from_raw(previous_value) };
-                
-                let previous_value = if let MetricData::CorrelationDurationTracker(tracker) = previous_value {
-                    
-                    // Pass the time track to the new value as we want to keep the pending ones
-                    let CorrelationTimeTracker {
-                        time_track,
-                        accumulated
-                    } = tracker;
-                    
-                    let new_value = MetricData::CorrelationDurationTracker(CorrelationTimeTracker {
-                        time_track,
-                        accumulated: Default::default()
-                    });
 
-                    destroy_pointer(reference.swap(
-                        Box::into_raw(new_value.into()),
-                        Ordering::Relaxed,
-                    ));
-                    
-                    MetricData::CorrelationDurationTracker(CorrelationTimeTracker {
-                        time_track: Default::default(),
-                        accumulated
-                    })
-                } else {
-                    previous_value
-                };
-                
+                let previous_value =
+                    if let MetricData::CorrelationDurationTracker(tracker) = previous_value {
+                        // Pass the time track to the new value as we want to keep the pending ones
+                        let CorrelationTimeTracker {
+                            time_track,
+                            accumulated,
+                        } = tracker;
+
+                        let new_value =
+                            MetricData::CorrelationDurationTracker(CorrelationTimeTracker {
+                                time_track,
+                                accumulated: Default::default(),
+                            });
+
+                        destroy_pointer(
+                            reference.swap(Box::into_raw(new_value.into()), Ordering::Relaxed),
+                        );
+
+                        MetricData::CorrelationDurationTracker(CorrelationTimeTracker {
+                            time_track: Default::default(),
+                            accumulated,
+                        })
+                    } else {
+                        previous_value
+                    };
+
                 vec![previous_value]
             }
         }

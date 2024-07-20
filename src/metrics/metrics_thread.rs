@@ -1,7 +1,9 @@
+use std::iter;
+use std::ops::Add;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, TimeDelta, Utc};
 use influxdb::{InfluxDbWriteable, WriteQuery};
 use tracing::{debug, info};
 
@@ -52,6 +54,7 @@ pub struct MetricCorrelationReading {
     extra: String,
     correlation_id: String,
     location: String,
+    #[influxdb(tag)]
     event: String,
 }
 
@@ -63,7 +66,7 @@ pub struct MetricCorrelationTimeReading {
     #[influxdb(tag)]
     extra: String,
     correlation_id: String,
-    time_taken: i64
+    value: i64,
 }
 
 pub fn launch_metrics(influx_args: InfluxDBArgs, metric_level: MetricLevel) {
@@ -154,53 +157,63 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs, metric_level: MetricLevel) 
                         .into_query(metric_name),
                     )
                 }
-                MetricData::Correlation(corr_data) => {
-                    corr_data
-                        .map
-                        .iter_mut()
-                        .flat_map(|mut item| {
-                            let corr_id = item.key().clone();
-
-                            let guard = item.value_mut();
-
-                            let events = std::mem::take(guard);
-
-                            events
-                                .into_iter()
-                                .map(|event| {
-                                    let CorrelationEventOccurrence {
-                                        event,
-                                        location,
-                                        date,
-                                    } = event;
-
-                                    MetricCorrelationReading {
-                                        time: date,
-                                        host: host_name.clone(),
-                                        extra: extra.clone(),
-                                        correlation_id: corr_id.to_string(),
-                                        location: location.to_string(),
-                                        event: format!("{:?}", event),
-                                    }
-                                        .into_query(metric_name.clone())
-                                }).collect::<Vec<_>>()
-                        }).collect()
-                },
-                MetricData::CorrelationDurationTracker(tracker) => {
-                    tracker.accumulated
-                        .iter_mut()
-                        .map(|item| {
+                MetricData::Correlation(corr_data) => corr_data
+                    .map
+                    .iter_mut()
+                    .flat_map(|mut item| {
                         let corr_id = item.key().clone();
 
-                        MetricCorrelationTimeReading {
-                            time,
-                            host: host_name.clone(),
-                            extra: extra.clone(),
-                            correlation_id: corr_id.to_string(),
-                            time_taken: item.value().as_nanos() as i64
-                        }
-                        .into_query(metric_name.clone())
-                    }).collect()
+                        let guard = item.value_mut();
+
+                        let events = std::mem::take(guard);
+
+                        events
+                            .into_iter()
+                            .map(|event| {
+                                let CorrelationEventOccurrence {
+                                    event,
+                                    location,
+                                    date,
+                                } = event;
+
+                                MetricCorrelationReading {
+                                    time: date,
+                                    host: host_name.clone(),
+                                    extra: extra.clone(),
+                                    correlation_id: corr_id.to_string(),
+                                    location: location.to_string(),
+                                    event: format!("{:?}", event),
+                                }
+                                .into_query(metric_name.clone())
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .collect(),
+                MetricData::CorrelationDurationTracker(tracker) => {
+                    let mut our_time = time;
+
+                    let vec: MaybeVec<WriteQuery> = tracker
+                        .accumulated
+                        .iter_mut()
+                        .map(|item| {
+                            let corr_id = item.key().clone();
+
+                            our_time += TimeDelta::nanoseconds(1);
+
+                            MetricCorrelationTimeReading {
+                                time: our_time,
+                                host: host_name.clone(),
+                                extra: extra.clone(),
+                                correlation_id: corr_id.to_string(),
+                                value: item.value().as_nanos() as i64,
+                            }
+                            .into_query(metric_name.clone())
+                        })
+                        .collect();
+
+                    //info!("Correlation Duration Tracker: {:?} {:?}", vec.len(), vec);
+
+                    vec
                 }
             };
 
@@ -213,16 +226,32 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs, metric_level: MetricLevel) 
 
         let instant = std::time::Instant::now();
 
-        let result =
-            rt::block_on(client.query(readings)).expect("Failed to write metrics to influxdb");
+        let readings_to_write = readings.len();
 
+        let result: anyhow::Result<String> = readings
+            .chunks(10000)
+            .zip(iter::repeat_with(|| client.clone()))
+            .try_fold(String::new(), |mut acc, (chunk, client)| {
+                let result = rt::block_on(client.query(chunk.to_vec()));
+
+                match result {
+                    Ok(res) => {
+                        acc.push_str(&res);
+                        Ok(acc)
+                    }
+                    Err(e) => Err(anyhow::Error::new(e)),
+                }
+            });
         let time_taken = instant.elapsed();
         debug!(
-            "Result of writing metrics: {:?} in {:?}",
-            result, time_taken
+            "Result of writing metrics: {:?} in {:?}. Wrote {} metrics",
+            result, time_taken, readings_to_write
         );
 
-        std::thread::sleep(Duration::from_millis(1000));
+        std::thread::sleep(Duration::from_millis(std::cmp::max(
+            0,
+            1000 - time_taken.as_millis() as u64,
+        )));
     }
 }
 
