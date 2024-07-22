@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicPtr, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use getset::Getters;
 use thread_local::ThreadLocal;
 use tracing::error;
@@ -18,11 +18,13 @@ use crate::metrics::correlation_ids::{
 };
 use crate::metrics::correlation_time::CorrelationTimeTracker;
 use crate::{MetricLevel, MetricRegistry, MetricRegistryInfo};
+use crate::metrics::correlation_counter::CorrelationCounterTracker;
 
 mod correlation_ids;
 mod correlation_time;
 pub mod metrics_thread;
 pub(super) mod os_mon;
+mod correlation_counter;
 
 static mut METRICS: Global<Metrics> = Global::new();
 
@@ -48,6 +50,7 @@ pub struct Metric {
 enum SafeMetricData {
     Sequential(Vec<Mutex<MetricData>>, ThreadLocal<Cell<usize>>),
     ThreadSafe(AtomicPtr<MetricData>),
+    Atomic(MetricData)
 }
 
 /// Data for a given metric
@@ -56,9 +59,13 @@ pub(super) enum MetricData {
     Duration(Vec<u64>),
     /// A counter is a metric that is incremented by X every time it is called and in the end is combined
     Counter(AtomicU64),
+    
+    CounterCorrelation(CorrelationCounterTracker),
     /// A vector that stores the counts of things and then averages their values to feed to influx db
     /// This is useful for stuff like the batch size, which we don't want to add together.
     Count(Vec<usize>),
+    /// A counter that stores the maximum value
+    CountMax(Vec<(u64, DateTime<Utc>)>),
 
     Correlation(CorrelationTracker),
 
@@ -86,8 +93,11 @@ pub enum MetricKind {
     Duration,
     /// A counter is a metric that is incremented by X every time it is called and in the end is combined
     Counter,
+    CounterCorrelation,
     /// A count is to be used to store various independent counts and then average them together
     Count,
+    /// Metrics for correlation ID tracking
+    CountMax(usize),
     /// Metrics for correlation ID tracking
     Correlation,
     /// Duration with correlation, individually addressed
@@ -139,12 +149,17 @@ impl Metrics {
 impl MetricKind {
     fn gen_metric_type(&self, concurrency: usize) -> SafeMetricData {
         match self {
-            MetricKind::Duration | MetricKind::Count => {
+            MetricKind::Duration | MetricKind::Count | MetricKind::CountMax(_) => {
                 let buckets = iter::repeat_with(|| Mutex::new(self.gen_metric_type_internal()))
                     .take(concurrency)
                     .collect();
 
                 SafeMetricData::Sequential(buckets, ThreadLocal::new())
+            }
+            MetricKind::Counter => {
+                let metric = self.gen_metric_type_internal();
+
+                SafeMetricData::Atomic(metric)
             }
             _ => {
                 let metric = self.gen_metric_type_internal();
@@ -161,6 +176,7 @@ impl MetricKind {
             MetricKind::Duration => MetricData::Duration(Vec::new()),
             MetricKind::Counter => MetricData::Counter(AtomicU64::new(0)),
             MetricKind::Count => MetricData::Count(Vec::new()),
+            MetricKind::CountMax(_) => MetricData::CountMax(Vec::new()),
             MetricKind::Correlation => MetricData::Correlation(Default::default()),
             MetricKind::CorrelationDurationTracker => {
                 MetricData::CorrelationDurationTracker(Default::default())
@@ -168,6 +184,7 @@ impl MetricKind {
             MetricKind::CorrelationAggrDurationTracker => {
                 MetricData::CorrelationAggrDurationTracker(Default::default())
             }
+            MetricKind::CounterCorrelation => MetricData::CounterCorrelation(Default::default()),
         }
     }
 
@@ -176,10 +193,11 @@ impl MetricKind {
             MetricKind::Duration => AdditionalMetricData::Duration(None),
             MetricKind::Counter => AdditionalMetricData::Counter,
             MetricKind::Count => AdditionalMetricData::Count,
+            MetricKind::CountMax(_) => AdditionalMetricData::Counter,
             MetricKind::Correlation => AdditionalMetricData::Correlation,
-            MetricKind::CorrelationDurationTracker | MetricKind::CorrelationAggrDurationTracker => {
-                AdditionalMetricData::Correlation
-            }
+            MetricKind::CorrelationDurationTracker | MetricKind::CorrelationAggrDurationTracker => 
+                AdditionalMetricData::Correlation,
+            MetricKind::CounterCorrelation => AdditionalMetricData::Counter
         }
     }
 }
@@ -209,18 +227,15 @@ impl Metric {
                                 MetricData::Duration(Vec::with_capacity(vals.len()))
                             }
                             MetricData::Counter(_) => MetricData::Counter(AtomicU64::new(0)),
-                            MetricData::Count(vals) => {
-                                MetricData::Count(Vec::with_capacity(vals.len()))
-                            }
-                            MetricData::Correlation(_) => {
-                                MetricData::Correlation(Default::default())
-                            }
-                            MetricData::CorrelationDurationTracker(_) => {
-                                MetricData::CorrelationDurationTracker(Default::default())
-                            }
-                            MetricData::CorrelationAggrDurationTracker(_) => {
-                                MetricData::CorrelationAggrDurationTracker(Default::default())
-                            }
+                            MetricData::Count(vals) => 
+                                MetricData::Count(Vec::with_capacity(vals.len())),
+                            MetricData::CountMax(_) => MetricData::CountMax(Vec::new()),
+                            MetricData::Correlation(_) => MetricData::Correlation(Default::default()),
+                            MetricData::CorrelationDurationTracker(_) => 
+                                MetricData::CorrelationDurationTracker(Default::default()),
+                            MetricData::CorrelationAggrDurationTracker(_) => 
+                                MetricData::CorrelationAggrDurationTracker(Default::default()),
+                            MetricData::CounterCorrelation(_) => MetricData::CounterCorrelation(Default::default())
                         };
 
                         let prev_value = std::mem::replace(&mut *value, mt);
@@ -311,6 +326,16 @@ impl Metric {
 
                 vec![previous_value]
             }
+            SafeMetricData::Atomic(data) => {
+                let data = match data {
+                    MetricData::Counter(counter) => {
+                        MetricData::Counter(AtomicU64::new(counter.swap(0, Ordering::Relaxed)))
+                    }
+                    _ => unreachable!("")
+                };
+                
+                vec![data]
+            },
         }
     }
 }
@@ -335,6 +360,9 @@ impl MetricData {
             (MetricData::Count(count), MetricData::Count(mut count2)) => {
                 count.append(&mut count2);
             }
+            (MetricData::CountMax(count), MetricData::CountMax(mut count2)) => {
+                count.append(&mut count2);
+            }
             _ => panic!("Can't merge metrics of different types"),
         }
     }
@@ -352,7 +380,7 @@ impl SafeMetricData {
 
                 current_round_robin
             }
-            SafeMetricData::ThreadSafe(_) => 0,
+            SafeMetricData::ThreadSafe(_) | SafeMetricData::Atomic(_)=> 0,
         }
     }
 
@@ -366,12 +394,16 @@ impl SafeMetricData {
             SafeMetricData::ThreadSafe(_) => {
                 unreachable!("Cannot get a lock on a thread safe metric")
             }
+            SafeMetricData::Atomic(_) => {
+                unreachable!("Cannot get a lock on an atomic metric")
+            }
         }
     }
 
     pub fn get_metric_data(&self) -> &MetricData {
         match self {
             SafeMetricData::ThreadSafe(data) => unsafe { &*data.load(Ordering::Relaxed) },
+            SafeMetricData::Atomic(data) => data,
             SafeMetricData::Sequential(_, _) => {
                 unreachable!("Cannot get a reference to a sequential metric")
             }
@@ -406,6 +438,15 @@ fn enqueue_counter_measurement(metric: &Metric, count: usize) {
 
     if let MetricData::Count(ref mut v) = *values {
         v.push(count);
+    }
+}
+
+#[inline]
+fn enqueue_counter_max_measurement(metric: &Metric, count: usize) {
+    let mut values = metric.value().locked_metric_data();
+
+    if let MetricData::CountMax(ref mut v) = *values {
+        v.push((count as u64, Utc::now()));
     }
 }
 
@@ -459,7 +500,7 @@ fn collect_measurements(metric: &Metric) -> Vec<MetricData> {
 }
 
 /// Collect all measurements from all metrics
-fn collect_all_measurements(level: &MetricLevel) -> Vec<(String, MetricData)> {
+fn collect_all_measurements(level: &MetricLevel) -> Vec<(&Metric, MetricData)> {
     match unsafe { METRICS.get() } {
         Some(metrics) => {
             let mut collected_metrics = Vec::with_capacity(metrics.metrics.len());
@@ -471,7 +512,7 @@ fn collect_all_measurements(level: &MetricLevel) -> Vec<(String, MetricData)> {
                     continue;
                 }
 
-                collected_metrics.push((metric.name.clone(), collect_measurements(metric)));
+                collected_metrics.push((metric, collect_measurements(metric)));
             }
 
             let mut final_metric_data = Vec::with_capacity(collected_metrics.len());
@@ -608,6 +649,26 @@ pub fn metric_store_count(m_index: usize, amount: usize) {
             }
 
             enqueue_counter_measurement(metric, amount);
+        } else {
+            error!(
+                "Failed to get metric by index {}. It is probably not registered",
+                m_index
+            );
+        }
+    }
+}
+
+#[inline]
+pub fn metric_store_count_max(m_index: usize, amount: usize) {
+    if let Some(ref metrics) = unsafe { METRICS.get() } {
+        let metric = metric_at_index(metrics, m_index);
+
+        if let Some(metric) = metric {
+            if metric.metric_level < metrics.current_level {
+                return;
+            }
+
+            enqueue_counter_max_measurement(metric, amount);
         } else {
             error!(
                 "Failed to get metric by index {}. It is probably not registered",
@@ -788,6 +849,33 @@ pub fn metric_correlation_time_end(m_index: usize, correlation_id: impl AsRef<st
             let correlation_id = Arc::from(correlation_id.as_ref());
 
             correlation_time::end_correlation_time_tracker(metric, correlation_id);
+        } else {
+            error!(
+                "Failed to get metric by index {}. It is probably not registered",
+                m_index
+            );
+        }
+    }
+}
+
+#[inline]
+pub fn metric_correlation_counter_increment(m_index: usize, correlation_id: impl AsRef<str>, increment_count: Option<u64>) {
+    let correlation_id = Arc::from(correlation_id.as_ref());
+    
+    metric_correlation_counter_increment_arc(m_index, correlation_id, increment_count)
+}
+
+#[inline]
+pub fn metric_correlation_counter_increment_arc(m_index: usize, correlation_id: Arc<str>, increment_count: Option<u64>) {
+    if let Some(ref metrics) = unsafe { METRICS.get() } {
+        let metric = metric_at_index(metrics, m_index);
+
+        if let Some(metric) = metric {
+            if metric.metric_level < metrics.current_level {
+                return;
+            }
+            
+            correlation_counter::increment_counter(metric, correlation_id, increment_count);
         } else {
             error!(
                 "Failed to get metric by index {}. It is probably not registered",

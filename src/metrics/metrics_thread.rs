@@ -5,10 +5,10 @@ use std::time::Duration;
 
 use chrono::{DateTime, TimeDelta, Utc};
 use influxdb::{InfluxDbWriteable, WriteQuery};
-use tracing::{debug, info};
+use tracing::{debug, error, info};
 
 use crate::metrics::correlation_ids::CorrelationEventOccurrence;
-use crate::metrics::{collect_all_measurements, MetricData};
+use crate::metrics::{collect_all_measurements, MetricData, MetricKind};
 use crate::{InfluxDBArgs, MetricLevel};
 use atlas_common::async_runtime as rt;
 use atlas_common::maybe_vec::{MaybeVec, MaybeVecBuilder};
@@ -46,6 +46,16 @@ pub struct MetricCountReading {
 }
 
 #[derive(InfluxDbWriteable)]
+pub struct MetricCountMaxReading {
+    time: DateTime<Utc>,
+    #[influxdb(tag)]
+    host: String,
+    #[influxdb(tag)]
+    extra: String,
+    value: i64,
+}
+
+#[derive(InfluxDbWriteable)]
 pub struct MetricCorrelationReading {
     time: DateTime<Utc>,
     #[influxdb(tag)]
@@ -76,6 +86,17 @@ pub struct MetricCorrelationAggrTimeReading {
     host: String,
     #[influxdb(tag)]
     extra: String,
+    value: i64,
+}
+
+#[derive(InfluxDbWriteable)]
+pub struct MetricCorrelationCounterReading {
+    time: DateTime<Utc>,
+    #[influxdb(tag)]
+    host: String,
+    #[influxdb(tag)]
+    extra: String,
+    correlation_id: String,
     value: i64,
 }
 
@@ -113,7 +134,8 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs, metric_level: MetricLevel) 
 
         let mut readings = Vec::with_capacity(measurements.len());
 
-        for (metric_name, results) in measurements {
+        for (metric, results) in measurements {
+            let metric_name = metric.name();
             let query = match results {
                 MetricData::Duration(dur) => {
                     if dur.is_empty() {
@@ -244,6 +266,55 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs, metric_level: MetricLevel) 
                         }
                         .into_query(metric_name),
                     )
+                }
+                MetricData::CountMax(mut counts) => {
+                    let max = if let MetricKind::CountMax(max) = metric.metric_type() {
+                        *max
+                    } else {
+                        error!(
+                            "Metric is not a CounterMax, but a {:?}",
+                            metric.metric_type()
+                        );
+                        continue;
+                    };
+
+                    if counts.is_empty() {
+                        continue;
+                    }
+
+                    counts.sort_by(|(a, _), (b, _)| a.cmp(b).reverse());
+
+                    counts
+                        .into_iter()
+                        .take(max)
+                        .map(|(count, time)| {
+                            MetricCountMaxReading {
+                                time,
+                                host: host_name.clone(),
+                                extra: extra.clone(),
+                                value: count as i64,
+                            }
+                            .into_query(metric_name.clone())
+                        })
+                        .collect()
+                }
+                MetricData::CounterCorrelation(data) => {
+                    let mut time = time;
+                    
+                    data.counter_track.iter_mut().map(|counter| {
+                        time += TimeDelta::nanoseconds(1);
+                        
+                        let correlation_id = counter.key().clone();
+                        let value = counter.value().swap(0, Ordering::Relaxed);
+                        
+                        MetricCorrelationCounterReading {
+                            time,
+                            host: host_name.clone(),
+                            extra: extra.clone(),
+                            correlation_id: correlation_id.to_string(),
+                            value: value as i64,
+                        }.into_query(metric_name.clone())
+                    }).collect()
                 }
             };
 
