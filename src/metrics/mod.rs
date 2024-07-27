@@ -2,7 +2,7 @@ use std::cell::Cell;
 use std::fmt::{Debug, Formatter};
 use std::iter;
 use std::sync::atomic::{AtomicPtr, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard};
 use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
@@ -49,7 +49,7 @@ pub struct Metric {
 /// The data for a metric
 enum SafeMetricData {
     Sequential(Vec<Mutex<MetricData>>, ThreadLocal<Cell<usize>>),
-    ThreadSafe(AtomicPtr<MetricData>),
+    ThreadSafe(RwLock<MetricData>),
     Atomic(MetricData)
 }
 
@@ -164,9 +164,7 @@ impl MetricKind {
             _ => {
                 let metric = self.gen_metric_type_internal();
 
-                let metrics_ptr = Box::into_raw(metric.into());
-
-                SafeMetricData::ThreadSafe(AtomicPtr::from(metrics_ptr))
+                SafeMetricData::ThreadSafe(RwLock::new(metric))
             }
         }
     }
@@ -222,22 +220,8 @@ impl Metric {
                     let metric_type = {
                         let mut value = data.lock().unwrap();
 
-                        let mt = match &*value {
-                            MetricData::Duration(vals) => {
-                                MetricData::Duration(Vec::with_capacity(vals.len()))
-                            }
-                            MetricData::Counter(_) => MetricData::Counter(AtomicU64::new(0)),
-                            MetricData::Count(vals) => 
-                                MetricData::Count(Vec::with_capacity(vals.len())),
-                            MetricData::CountMax(_) => MetricData::CountMax(Vec::new()),
-                            MetricData::Correlation(_) => MetricData::Correlation(Default::default()),
-                            MetricData::CorrelationDurationTracker(_) => 
-                                MetricData::CorrelationDurationTracker(Default::default()),
-                            MetricData::CorrelationAggrDurationTracker(_) => 
-                                MetricData::CorrelationAggrDurationTracker(Default::default()),
-                            MetricData::CounterCorrelation(_) => MetricData::CounterCorrelation(Default::default())
-                        };
-
+                        let mt = self.metric_type.gen_metric_type_internal();
+                        
                         let prev_value = std::mem::replace(&mut *value, mt);
 
                         if let MetricData::CorrelationDurationTracker(tracker) = prev_value {
@@ -269,13 +253,10 @@ impl Metric {
                 collected_values
             }
             SafeMetricData::ThreadSafe(reference) => {
-                let previous_value = reference.swap(
-                    Box::into_raw(self.metric_type.gen_metric_type_internal().into()),
-                    Ordering::Relaxed,
-                );
-
-                let previous_value = *unsafe { Box::from_raw(previous_value) };
-
+                let mut previous_value_guard = reference.write().unwrap();
+                
+                let previous_value = std::mem::replace(&mut *previous_value_guard, self.metric_type.gen_metric_type_internal());
+                
                 let previous_value = match previous_value {
                     MetricData::CorrelationDurationTracker(tracker) => {
                         // Pass the time track to the new value as we want to keep the pending ones
@@ -289,10 +270,8 @@ impl Metric {
                                 time_track,
                                 accumulated: Default::default(),
                             });
-
-                        destroy_pointer(
-                            reference.swap(Box::into_raw(new_value.into()), Ordering::Relaxed),
-                        );
+                        
+                        let _ = std::mem::replace(&mut *previous_value_guard, new_value);
 
                         MetricData::CorrelationDurationTracker(CorrelationTimeTracker {
                             time_track: Default::default(),
@@ -312,9 +291,7 @@ impl Metric {
                                 accumulated: Default::default(),
                             });
 
-                        destroy_pointer(
-                            reference.swap(Box::into_raw(new_value.into()), Ordering::Relaxed),
-                        );
+                        let _ = std::mem::replace(&mut *previous_value_guard, new_value);
 
                         MetricData::CorrelationAggrDurationTracker(CorrelationTimeTracker {
                             time_track: Default::default(),
@@ -400,10 +377,23 @@ impl SafeMetricData {
         }
     }
 
+    pub fn get_thread_safe_read(&self) -> RwLockReadGuard<MetricData> {
+        match self { 
+            SafeMetricData::ThreadSafe(data) => data.read().unwrap(),
+            SafeMetricData::Sequential(_, _) => {
+                unreachable!("Cannot get a reference to a sequential metric")
+            }
+            SafeMetricData::Atomic(_) => {
+                unreachable!("Cannot get a reference to an atomic metric")
+            }
+        
+        }
+    }
+    
     pub fn get_metric_data(&self) -> &MetricData {
         match self {
-            SafeMetricData::ThreadSafe(data) => unsafe { &*data.load(Ordering::Relaxed) },
             SafeMetricData::Atomic(data) => data,
+            SafeMetricData::ThreadSafe(_) => unreachable!("Cannot get a reference to a thread safe metric"),
             SafeMetricData::Sequential(_, _) => {
                 unreachable!("Cannot get a reference to a sequential metric")
             }

@@ -10,7 +10,8 @@ pub(crate) struct CorrelationCounterTracker {
 }
 
 pub(crate) fn increment_counter(metric: &Metric, correlation: Arc<str>, to_increase: Option<u64>) {
-    if let MetricData::CounterCorrelation(tracker) = metric.value().get_metric_data() {
+    let lock_guard = metric.value().get_thread_safe_read();
+    if let MetricData::CounterCorrelation(tracker) = &*lock_guard {
         let entry_ref = if !tracker.counter_track.contains_key(&correlation) {
             tracker.counter_track.entry(correlation.clone()).or_insert_with(|| AtomicU64::new(0));
 
