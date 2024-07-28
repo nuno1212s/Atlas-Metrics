@@ -35,17 +35,6 @@ pub struct MetricDurationReading {
 }
 
 #[derive(InfluxDbWriteable)]
-pub struct MetricCountReading {
-    time: DateTime<Utc>,
-    #[influxdb(tag)]
-    host: String,
-    #[influxdb(tag)]
-    extra: String,
-    value: f64,
-    std_dev: f64,
-}
-
-#[derive(InfluxDbWriteable)]
 pub struct MetricCountMaxReading {
     time: DateTime<Utc>,
     #[influxdb(tag)]
@@ -137,24 +126,33 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs, metric_level: MetricLevel) 
         for (metric, results) in measurements {
             let metric_name = metric.name();
             let query = match results {
-                MetricData::Duration(dur) => {
-                    if dur.is_empty() {
-                        continue;
+                MetricData::Duration { m, s, count, sum } |
+                MetricData::Count { m, s, count, sum } => {
+                    let s = s.load(Ordering::Relaxed) as f64;
+                    let count = count.load(Ordering::Relaxed) as f64;
+                    let sum = sum.load(Ordering::Relaxed) as f64;
+
+                    if count < 1f64 {
+                        continue
                     }
+                    
+                    let avg = sum / count;
 
-                    let duration_avg = mean(&dur[..]).unwrap_or(0.0);
-
-                    let dur = std_deviation(&dur[..]).unwrap_or(0.0);
+                    let std_dev = if count >= 2f64 {
+                        s / (count - 1f64)
+                    } else {
+                        0f64
+                    };
 
                     MaybeVec::from_one(
                         MetricDurationReading {
                             time,
                             host: host_name.clone(),
                             extra: extra.clone(),
-                            value: duration_avg,
-                            std_dev: dur,
+                            value: avg,
+                            std_dev,
                         }
-                        .into_query(metric_name),
+                            .into_query(metric_name),
                     )
                 }
                 MetricData::Counter(count) => {
@@ -166,27 +164,7 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs, metric_level: MetricLevel) 
                             // Could lose some information, but the driver did NOT like u64
                             value: count.load(Ordering::Relaxed) as i64,
                         }
-                        .into_query(metric_name),
-                    )
-                }
-                MetricData::Count(counts) => {
-                    if counts.is_empty() {
-                        continue;
-                    }
-
-                    let count_avg = mean_usize(&counts[..]).unwrap_or(0.0);
-
-                    let dur = std_deviation_usize(&counts[..]).unwrap_or(0.0);
-
-                    MaybeVec::from_one(
-                        MetricCountReading {
-                            time,
-                            host: host_name.clone(),
-                            extra: extra.clone(),
-                            value: count_avg,
-                            std_dev: dur,
-                        }
-                        .into_query(metric_name),
+                            .into_query(metric_name),
                     )
                 }
                 MetricData::Correlation(corr_data) => corr_data
@@ -216,7 +194,7 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs, metric_level: MetricLevel) 
                                     location: location.to_string(),
                                     event: format!("{:?}", event),
                                 }
-                                .into_query(metric_name.clone())
+                                    .into_query(metric_name.clone())
                             })
                             .collect::<Vec<_>>()
                     })
@@ -239,7 +217,7 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs, metric_level: MetricLevel) 
                                 correlation_id: corr_id.to_string(),
                                 value: item.value().as_nanos() as i64,
                             }
-                            .into_query(metric_name.clone())
+                                .into_query(metric_name.clone())
                         })
                         .collect();
 
@@ -264,7 +242,7 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs, metric_level: MetricLevel) 
                             extra: extra.clone(),
                             value: duration as i64,
                         }
-                        .into_query(metric_name),
+                            .into_query(metric_name),
                     )
                 }
                 MetricData::CountMax(mut counts) => {
@@ -294,19 +272,19 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs, metric_level: MetricLevel) 
                                 extra: extra.clone(),
                                 value: count as i64,
                             }
-                            .into_query(metric_name.clone())
+                                .into_query(metric_name.clone())
                         })
                         .collect()
                 }
                 MetricData::CounterCorrelation(data) => {
                     let mut time = time;
-                    
+
                     data.counter_track.iter_mut().map(|counter| {
                         time += TimeDelta::nanoseconds(1);
-                        
+
                         let correlation_id = counter.key().clone();
                         let value = counter.value().swap(0, Ordering::Relaxed);
-                        
+
                         MetricCorrelationCounterReading {
                             time,
                             host: host_name.clone(),
