@@ -126,16 +126,16 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs, metric_level: MetricLevel) 
         for (metric, results) in measurements {
             let metric_name = metric.name();
             let query = match results {
-                MetricData::Duration { m, s, count, sum } |
-                MetricData::Count { m, s, count, sum } => {
+                MetricData::Duration { m, s, count, sum }
+                | MetricData::Count { m, s, count, sum } => {
                     let s = s.load(Ordering::Relaxed) as f64;
                     let count = count.load(Ordering::Relaxed) as f64;
                     let sum = sum.load(Ordering::Relaxed) as f64;
 
                     if count < 1f64 {
-                        continue
+                        continue;
                     }
-                    
+
                     let avg = sum / count;
 
                     let std_dev = if count >= 2f64 {
@@ -152,7 +152,7 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs, metric_level: MetricLevel) 
                             value: avg,
                             std_dev,
                         }
-                            .into_query(metric_name),
+                        .into_query(metric_name),
                     )
                 }
                 MetricData::Counter(count) => {
@@ -164,7 +164,7 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs, metric_level: MetricLevel) 
                             // Could lose some information, but the driver did NOT like u64
                             value: count.load(Ordering::Relaxed) as i64,
                         }
-                            .into_query(metric_name),
+                        .into_query(metric_name),
                     )
                 }
                 MetricData::Correlation(corr_data) => corr_data
@@ -194,7 +194,7 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs, metric_level: MetricLevel) 
                                     location: location.to_string(),
                                     event: format!("{:?}", event),
                                 }
-                                    .into_query(metric_name.clone())
+                                .into_query(metric_name.clone())
                             })
                             .collect::<Vec<_>>()
                     })
@@ -217,7 +217,7 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs, metric_level: MetricLevel) 
                                 correlation_id: corr_id.to_string(),
                                 value: item.value().as_nanos() as i64,
                             }
-                                .into_query(metric_name.clone())
+                            .into_query(metric_name.clone())
                         })
                         .collect();
 
@@ -242,7 +242,7 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs, metric_level: MetricLevel) 
                             extra: extra.clone(),
                             value: duration as i64,
                         }
-                            .into_query(metric_name),
+                        .into_query(metric_name),
                     )
                 }
                 MetricData::CountMax(mut counts) => {
@@ -272,27 +272,31 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs, metric_level: MetricLevel) 
                                 extra: extra.clone(),
                                 value: count as i64,
                             }
-                                .into_query(metric_name.clone())
+                            .into_query(metric_name.clone())
                         })
                         .collect()
                 }
                 MetricData::CounterCorrelation(data) => {
                     let mut time = time;
 
-                    data.counter_track.iter_mut().map(|counter| {
-                        time += TimeDelta::nanoseconds(1);
+                    data.counter_track
+                        .iter_mut()
+                        .map(|counter| {
+                            time += TimeDelta::nanoseconds(1);
 
-                        let correlation_id = counter.key().clone();
-                        let value = counter.value().swap(0, Ordering::Relaxed);
+                            let correlation_id = counter.key().clone();
+                            let value = counter.value().swap(0, Ordering::Relaxed);
 
-                        MetricCorrelationCounterReading {
-                            time,
-                            host: host_name.clone(),
-                            extra: extra.clone(),
-                            correlation_id: correlation_id.to_string(),
-                            value: value as i64,
-                        }.into_query(metric_name.clone())
-                    }).collect()
+                            MetricCorrelationCounterReading {
+                                time,
+                                host: host_name.clone(),
+                                extra: extra.clone(),
+                                correlation_id: correlation_id.to_string(),
+                                value: value as i64,
+                            }
+                            .into_query(metric_name.clone())
+                        })
+                        .collect()
                 }
             };
 

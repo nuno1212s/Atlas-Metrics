@@ -47,7 +47,7 @@ fn with_correlation_tracker(
     f: impl FnOnce(&mut Vec<CorrelationEventOccurrence>),
 ) {
     let lock_guard = metric.value().get_thread_safe_read();
-    
+
     if let MetricData::Correlation(tracker) = &*lock_guard {
         let mut entry = tracker.map.entry(id).or_insert_with(|| Vec::new());
 

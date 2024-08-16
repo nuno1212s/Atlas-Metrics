@@ -23,7 +23,7 @@ pub(crate) fn start_correlation_time_tracker(metric: &Metric, id: Arc<str>) {
 
 pub(crate) fn end_correlation_time_tracker(metric: &Metric, id: Arc<str>) {
     let lock_guard = metric.value().get_thread_safe_read();
-    match &*lock_guard{
+    match &*lock_guard {
         MetricData::CorrelationDurationTracker(tracker)
         | MetricData::CorrelationAggrDurationTracker(tracker) => {
             if let Some((correlation, init_time)) = tracker.time_track.remove(&id) {
