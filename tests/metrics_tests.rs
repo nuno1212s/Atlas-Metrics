@@ -19,7 +19,6 @@ mod metrics_tests {
             init(InitConfig {
                 async_threads: 1,
                 threadpool_threads: 1,
-                id: None,
             })
             .expect("panic")
         };
