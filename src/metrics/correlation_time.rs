@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 #[derive(Default)]
-pub(super) struct CorrelationTimeTracker {
+pub(crate) struct CorrelationTimeTracker {
     pub(super) time_track: DashMap<Arc<str>, Instant>,
     pub(super) accumulated: DashMap<Arc<str>, Duration>,
 }

@@ -1,5 +1,4 @@
 use std::iter;
-use std::ops::Add;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
@@ -11,7 +10,7 @@ use crate::metrics::correlation_ids::CorrelationEventOccurrence;
 use crate::metrics::{collect_all_measurements, MetricData, MetricKind};
 use crate::{InfluxDBArgs, MetricLevel};
 use atlas_common::async_runtime as rt;
-use atlas_common::maybe_vec::{MaybeVec, MaybeVecBuilder};
+use atlas_common::maybe_vec::{MaybeVec};
 
 #[derive(InfluxDbWriteable)]
 pub struct MetricCounterReading {
@@ -126,8 +125,8 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs, metric_level: MetricLevel) 
         for (metric, results) in measurements {
             let metric_name = metric.name();
             let query = match results {
-                MetricData::Duration { m, s, count, sum }
-                | MetricData::Count { m, s, count, sum } => {
+                MetricData::Duration {  s, count, sum, .. }
+                | MetricData::Count { s, count, sum, .. } => {
                     let s = s.load(Ordering::Relaxed) as f64;
                     let count = count.load(Ordering::Relaxed) as f64;
                     let sum = sum.load(Ordering::Relaxed) as f64;
@@ -337,63 +336,5 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs, metric_level: MetricLevel) 
             0,
             1000 - time_taken.as_millis() as u64,
         )));
-    }
-}
-
-fn mean(data: &[u64]) -> Option<f64> {
-    let sum = data.iter().sum::<u64>() as f64;
-    let count = data.len();
-
-    match count {
-        positive if positive > 0 => Some(sum / count as f64),
-        _ => None,
-    }
-}
-
-fn std_deviation(data: &[u64]) -> Option<f64> {
-    match (mean(data), data.len()) {
-        (Some(data_mean), count) if count > 0 => {
-            let variance = data
-                .iter()
-                .map(|value| {
-                    let diff = data_mean - (*value as f64);
-
-                    diff * diff
-                })
-                .sum::<f64>()
-                / count as f64;
-
-            Some(variance.sqrt())
-        }
-        _ => None,
-    }
-}
-
-fn mean_usize(data: &[usize]) -> Option<f64> {
-    let sum = data.iter().sum::<usize>() as f64;
-    let count = data.len();
-
-    match count {
-        positive if positive > 0 => Some(sum / count as f64),
-        _ => None,
-    }
-}
-
-fn std_deviation_usize(data: &[usize]) -> Option<f64> {
-    match (mean_usize(data), data.len()) {
-        (Some(data_mean), count) if count > 0 => {
-            let variance = data
-                .iter()
-                .map(|value| {
-                    let diff = data_mean - (*value as f64);
-
-                    diff * diff
-                })
-                .sum::<f64>()
-                / count as f64;
-
-            Some(variance.sqrt())
-        }
-        _ => None,
     }
 }

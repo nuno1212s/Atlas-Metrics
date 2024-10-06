@@ -1,7 +1,7 @@
 use std::cell::Cell;
 use std::fmt::{Debug, Formatter};
 use std::iter;
-use std::sync::atomic::{AtomicPtr, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{ AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard};
 use std::time::{Duration, Instant};
 
@@ -443,7 +443,7 @@ pub(super) fn init(
 /// Enqueue a duration measurement
 #[inline]
 fn increase_welford_method(metric: &Metric, duration: u64) {
-    let mut values = metric.value().get_metric_data();
+    let values = metric.value().get_metric_data();
 
     match values {
         MetricData::Duration { m, s, count, sum } | MetricData::Count { m, s, count, sum } => {
@@ -453,15 +453,15 @@ fn increase_welford_method(metric: &Metric, duration: u64) {
             sum.fetch_add(duration, Ordering::Relaxed);
 
             let old_m = m
-                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |M| {
-                    Some(M + (duration - M) / k as u64)
+                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |m| {
+                    Some(m + (duration - m) / k as u64)
                 })
                 .expect("Failed to update sum");
 
             let new_m = old_m + (duration - old_m) / k as u64;
 
-            s.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |S| {
-                Some(S + (duration - new_m) * (duration - old_m))
+            s.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |s| {
+                Some(s + (duration - new_m) * (duration - old_m))
             })
             .expect("Failed to update sum_sqrs");
         }

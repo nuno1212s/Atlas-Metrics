@@ -2,9 +2,10 @@ use crate::metrics::{Metric, MetricData};
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use std::fmt::{Debug, Formatter};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
 
-pub(super) enum CorrelationEvent {
+#[allow(dead_code)]
+pub(crate) enum CorrelationEvent {
     Initialized,
     Passed,
     Encapsulated(usize, Arc<str>),
@@ -12,14 +13,14 @@ pub(super) enum CorrelationEvent {
     Ended,
 }
 
-pub(super) struct CorrelationEventOccurrence {
+pub(crate) struct CorrelationEventOccurrence {
     pub(super) date: DateTime<Utc>,
     pub(super) event: CorrelationEvent,
     pub(super) location: Arc<str>,
 }
 
 #[derive(Default)]
-pub(super) struct CorrelationTracker {
+pub(crate) struct CorrelationTracker {
     pub(crate) map: DashMap<Arc<str>, Vec<CorrelationEventOccurrence>>,
 }
 
