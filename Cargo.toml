@@ -17,6 +17,5 @@ tracing = "*"
 dashmap = "*"
 anyhow = "*"
 
+libproc = "0"
 mprober-lib = "*"
-procinfo = "*"
-page_size = "*"

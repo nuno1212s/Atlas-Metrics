@@ -4,6 +4,8 @@ use atlas_common::async_runtime as rt;
 use chrono::{DateTime, Utc};
 use influxdb::InfluxDbWriteable;
 use std::time::Duration;
+use libproc::pid_rusage::{PIDRUsage, RUsageInfoV4};
+use tracing::error;
 
 /// OS Metrics
 pub const OS_CPU_USER: &str = "OS_CPU_USER";
@@ -130,14 +132,20 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs) {
             .into_query(OS_NETWORK_DOWN),
         );
 
-        let memory_stats = procinfo::pid::statm_self().unwrap();
+        let mem_stats = match libproc::libproc::pid_rusage::pidrusage::<RUsageInfoV4>(std::process::id() as i32) {
+            Ok(stats) => stats,
+            Err(err) => {
+                error!("Failed to read process info {:?}", err);
+                continue
+            }
+        };
 
         readings.push(
             MetricRAMUsage {
                 time,
                 host: host_name.clone(),
                 extra: extra.clone(),
-                value: (memory_stats.data * page_size::get()) as i64,
+                value: (mem_stats.memory_used()) as i64,
             }
             .into_query(OS_RAM_USAGE),
         );

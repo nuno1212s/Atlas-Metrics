@@ -2,7 +2,7 @@ use std::iter;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use chrono::{DateTime, TimeDelta, Utc};
+use chrono::{DateTime, Utc};
 use influxdb::{InfluxDbWriteable, WriteQuery};
 use tracing::{debug, error, info};
 
@@ -207,7 +207,7 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs, metric_level: MetricLevel) 
                         .map(|item| {
                             let corr_id = item.key().clone();
 
-                            our_time += TimeDelta::nanoseconds(1);
+                            our_time += Duration::from_nanos(1);
 
                             MetricCorrelationTimeReading {
                                 time: our_time,
@@ -281,7 +281,7 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs, metric_level: MetricLevel) 
                     data.counter_track
                         .iter_mut()
                         .map(|counter| {
-                            time += TimeDelta::nanoseconds(1);
+                            time += Duration::from_nanos(1);
 
                             let correlation_id = counter.key().clone();
                             let value = counter.value().swap(0, Ordering::Relaxed);
