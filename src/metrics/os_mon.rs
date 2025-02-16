@@ -3,8 +3,8 @@ use atlas_common::async_runtime as rt;
 
 use chrono::{DateTime, Utc};
 use influxdb::InfluxDbWriteable;
-use std::time::Duration;
 use libproc::pid_rusage::{PIDRUsage, RUsageInfoV4};
+use std::time::Duration;
 use tracing::error;
 
 /// OS Metrics
@@ -132,11 +132,13 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs) {
             .into_query(OS_NETWORK_DOWN),
         );
 
-        let mem_stats = match libproc::libproc::pid_rusage::pidrusage::<RUsageInfoV4>(std::process::id() as i32) {
+        let mem_stats = match libproc::libproc::pid_rusage::pidrusage::<RUsageInfoV4>(
+            std::process::id() as i32,
+        ) {
             Ok(stats) => stats,
             Err(err) => {
                 error!("Failed to read process info {:?}", err);
-                continue
+                continue;
             }
         };
 

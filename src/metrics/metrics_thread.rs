@@ -10,7 +10,7 @@ use crate::metrics::correlation_ids::CorrelationEventOccurrence;
 use crate::metrics::{collect_all_measurements, MetricData, MetricKind};
 use crate::{InfluxDBArgs, MetricLevel};
 use atlas_common::async_runtime as rt;
-use atlas_common::maybe_vec::{MaybeVec};
+use atlas_common::maybe_vec::MaybeVec;
 
 #[derive(InfluxDbWriteable)]
 pub struct MetricCounterReading {
@@ -125,7 +125,7 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs, metric_level: MetricLevel) 
         for (metric, results) in measurements {
             let metric_name = metric.name();
             let query = match results {
-                MetricData::Duration {  s, count, sum, .. }
+                MetricData::Duration { s, count, sum, .. }
                 | MetricData::Count { s, count, sum, .. } => {
                     let s = s.load(Ordering::Relaxed) as f64;
                     let count = count.load(Ordering::Relaxed) as f64;

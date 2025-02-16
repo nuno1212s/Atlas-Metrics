@@ -1,7 +1,7 @@
 use std::cell::Cell;
 use std::fmt::{Debug, Formatter};
 use std::iter;
-use std::sync::atomic::{ AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicI64, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard};
 use std::time::{Duration, Instant};
 
@@ -58,10 +58,10 @@ enum SafeMetricData {
 pub(super) enum MetricData {
     /// This uses Welford's method for rolling standard dev calculations
     Duration {
-        m: AtomicU64,
-        s: AtomicU64,
+        m: AtomicI64,
+        s: AtomicI64,
         count: AtomicUsize,
-        sum: AtomicU64,
+        sum: AtomicI64,
     },
     /// A counter is a metric that is incremented by X every time it is called and in the end is combined
     Counter(AtomicU64),
@@ -70,10 +70,10 @@ pub(super) enum MetricData {
     /// A vector that stores the counts of things and then averages their values to feed to influx db
     /// This is useful for stuff like the batch size, which we don't want to add together.
     Count {
-        m: AtomicU64,
-        s: AtomicU64,
+        m: AtomicI64,
+        s: AtomicI64,
         count: AtomicUsize,
-        sum: AtomicU64,
+        sum: AtomicI64,
     },
     /// A counter that stores the maximum value
     CountMax(Vec<(u64, DateTime<Utc>)>),
@@ -183,16 +183,16 @@ impl MetricKind {
     fn gen_metric_type_internal(&self) -> MetricData {
         match self {
             MetricKind::Duration => MetricData::Duration {
-                m: AtomicU64::new(0),
-                s: AtomicU64::new(0),
+                m: AtomicI64::new(0),
+                s: AtomicI64::new(0),
                 count: AtomicUsize::new(0),
-                sum: AtomicU64::new(0),
+                sum: AtomicI64::new(0),
             },
             MetricKind::Count => MetricData::Count {
-                m: AtomicU64::new(0),
-                s: AtomicU64::new(0),
+                m: AtomicI64::new(0),
+                s: AtomicI64::new(0),
                 count: AtomicUsize::new(0),
-                sum: AtomicU64::new(0),
+                sum: AtomicI64::new(0),
             },
             MetricKind::Counter => MetricData::Counter(AtomicU64::new(0)),
             MetricKind::CountMax(_) => MetricData::CountMax(Vec::new()),
@@ -334,17 +334,17 @@ impl Metric {
                         MetricData::Counter(AtomicU64::new(counter.swap(0, Ordering::Relaxed)))
                     }
                     MetricData::Duration { s, m, sum, count } => {
-                        let s = AtomicU64::new(s.swap(0, Ordering::Relaxed));
-                        let m = AtomicU64::new(m.swap(0, Ordering::Relaxed));
-                        let sum = AtomicU64::new(sum.swap(0, Ordering::Relaxed));
+                        let s = AtomicI64::new(s.swap(0, Ordering::Relaxed));
+                        let m = AtomicI64::new(m.swap(0, Ordering::Relaxed));
+                        let sum = AtomicI64::new(sum.swap(0, Ordering::Relaxed));
                         let count = AtomicUsize::new(count.swap(0, Ordering::Relaxed));
 
                         MetricData::Duration { s, m, sum, count }
                     }
                     MetricData::Count { s, m, sum, count } => {
-                        let s = AtomicU64::new(s.swap(0, Ordering::Relaxed));
-                        let m = AtomicU64::new(m.swap(0, Ordering::Relaxed));
-                        let sum = AtomicU64::new(sum.swap(0, Ordering::Relaxed));
+                        let s = AtomicI64::new(s.swap(0, Ordering::Relaxed));
+                        let m = AtomicI64::new(m.swap(0, Ordering::Relaxed));
+                        let sum = AtomicI64::new(sum.swap(0, Ordering::Relaxed));
                         let count = AtomicUsize::new(count.swap(0, Ordering::Relaxed));
 
                         MetricData::Count { s, m, sum, count }
@@ -445,6 +445,8 @@ pub(super) fn init(
 fn increase_welford_method(metric: &Metric, duration: u64) {
     let values = metric.value().get_metric_data();
 
+    let duration = duration as i64;
+
     match values {
         MetricData::Duration { m, s, count, sum } | MetricData::Count { m, s, count, sum } => {
             // Welford's method for rolling standard deviation
@@ -454,14 +456,17 @@ fn increase_welford_method(metric: &Metric, duration: u64) {
 
             let old_m = m
                 .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |m| {
-                    Some(m + (duration - m) / k as u64)
+                    Some(m + (duration - m) / k as i64)
                 })
                 .expect("Failed to update sum");
 
-            let new_m = old_m + (duration - old_m) / k as u64;
+            let new_m = old_m + (duration - old_m) / k as i64;
 
             s.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |s| {
-                Some(s + (duration - new_m) * (duration - old_m))
+                Some(
+                    s.overflowing_add((duration - new_m).overflowing_mul(duration - old_m).0)
+                        .0
+                )
             })
             .expect("Failed to update sum_sqrs");
         }

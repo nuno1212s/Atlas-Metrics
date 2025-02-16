@@ -2,7 +2,7 @@ use crate::metrics::{Metric, MetricData};
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use std::fmt::{Debug, Formatter};
-use std::sync::{Arc};
+use std::sync::Arc;
 
 #[allow(dead_code)]
 pub(crate) enum CorrelationEvent {
