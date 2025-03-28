@@ -3,9 +3,8 @@ use atlas_common::async_runtime as rt;
 
 use chrono::{DateTime, Utc};
 use influxdb::InfluxDbWriteable;
-use libproc::pid_rusage::{PIDRUsage, RUsageInfoV4};
 use std::time::Duration;
-use tracing::error;
+use sysinfo::{Networks, System};
 
 /// OS Metrics
 pub const OS_CPU_USER: &str = "OS_CPU_USER";
@@ -73,88 +72,100 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs) {
 
     let extra = extra.unwrap_or(String::from("None"));
 
+    let mut sys = System::new();
+
+    let mut networks = Networks::new_with_refreshed_list();
+
     loop {
-        let time = Utc::now();
         let mut readings = Vec::new();
 
-        let result = mprober_lib::cpu::get_all_cpu_utilization_in_percentage(
-            false,
-            Duration::from_millis(250),
-        )
-        .unwrap();
+        let cpu_readings = read_cpu_usage(&mut sys, host_name.clone(), extra.clone());
 
-        let mut curr_cpu = 0;
+        cpu_readings
+            .into_iter()
+            .for_each(|reading| readings.push(reading.into_query(OS_CPU_USER)));
 
-        for usage in result {
-            let reading = MetricCPUReading {
-                time,
-                host: host_name.clone(),
-                extra: extra.clone(),
-                cpu: curr_cpu,
-                value: usage.min(1.0),
-            }
-            .into_query(OS_CPU_USER);
+        let (tx_speed, rx_speed) =
+            read_network_speed(&mut networks, host_name.clone(), extra.clone());
 
-            readings.push(reading);
+        readings.push(tx_speed.into_query(OS_NETWORK_UP));
+        readings.push(rx_speed.into_query(OS_NETWORK_DOWN));
 
-            curr_cpu += 1;
-        }
+        let ram_usage = read_ram_usage(&mut sys, host_name.clone(), extra.clone());
 
-        let network_speed =
-            mprober_lib::network::get_networks_with_speed(Duration::from_millis(250)).unwrap();
+        readings.push(ram_usage.into_query(OS_RAM_USAGE));
 
-        let mut tx_speed = 0.0;
-        let mut rx_speed = 0.0;
-
-        for (_network, speed) in network_speed {
-            //Only capture the most used one.
-            rx_speed += speed.receive;
-            tx_speed += speed.transmit;
-        }
-
-        readings.push(
-            MetricNetworkSpeed {
-                time,
-                host: host_name.clone(),
-                extra: extra.clone(),
-                value: tx_speed,
-            }
-            .into_query(OS_NETWORK_UP),
-        );
-
-        readings.push(
-            MetricNetworkSpeed {
-                time,
-                host: host_name.clone(),
-                extra: extra.clone(),
-                value: rx_speed,
-            }
-            .into_query(OS_NETWORK_DOWN),
-        );
-
-        let mem_stats = match libproc::libproc::pid_rusage::pidrusage::<RUsageInfoV4>(
-            std::process::id() as i32,
-        ) {
-            Ok(stats) => stats,
-            Err(err) => {
-                error!("Failed to read process info {:?}", err);
-                continue;
-            }
-        };
-
-        readings.push(
-            MetricRAMUsage {
-                time,
-                host: host_name.clone(),
-                extra: extra.clone(),
-                value: (mem_stats.memory_used()) as i64,
-            }
-            .into_query(OS_RAM_USAGE),
-        );
+        sys.refresh_all();
+        networks.refresh(false);
 
         let _result =
             rt::block_on(client.query(readings)).expect("Failed to write metrics to influxdb");
 
         std::thread::sleep(Duration::from_millis(250));
+    }
+}
+
+fn read_cpu_usage(sys: &mut System, host_name: String, extra: String) -> Vec<MetricCPUReading> {
+    let mut readings = Vec::new();
+
+    let mut curr_cpu = 0;
+
+    for cpu in sys.cpus() {
+        let reading = MetricCPUReading {
+            time: Utc::now(),
+            host: host_name.clone(),
+            extra: extra.clone(),
+            cpu: curr_cpu,
+            value: cpu.cpu_usage() as f64,
+        };
+
+        readings.push(reading);
+
+        curr_cpu += 1;
+    }
+
+    readings
+}
+
+fn read_network_speed(
+    networks: &mut Networks,
+    host_name: String,
+    extra: String,
+) -> (MetricNetworkSpeed, MetricNetworkSpeed) {
+    let mut tx_speed = 0;
+    let mut rx_speed = 0;
+
+    for (_inf, network) in networks.iter() {
+        let received_bytes = network.received();
+        let transmitted_bytes = network.transmitted();
+
+        tx_speed += received_bytes as i64;
+        rx_speed += transmitted_bytes as i64;
+    }
+
+    (
+        MetricNetworkSpeed {
+            time: Utc::now(),
+            host: host_name.clone(),
+            extra: extra.clone(),
+            value: tx_speed as f64,
+        },
+        MetricNetworkSpeed {
+            time: Utc::now(),
+            host: host_name,
+            extra,
+            value: rx_speed as f64,
+        },
+    )
+}
+
+fn read_ram_usage(sys_ref: &mut System, host_name: String, extra: String) -> MetricRAMUsage {
+    let used_memory = sys_ref.used_memory();
+
+    MetricRAMUsage {
+        time: Utc::now(),
+        host: host_name,
+        extra,
+        value: used_memory as i64,
     }
 }

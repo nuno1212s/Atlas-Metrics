@@ -17,5 +17,4 @@ tracing = "*"
 dashmap = "*"
 anyhow = "*"
 
-libproc = "0"
-mprober-lib = "*"
+sysinfo = { version = "*", default-features = false, features = ["system", "network"] }
