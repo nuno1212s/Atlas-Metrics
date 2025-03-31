@@ -4,7 +4,7 @@ use atlas_common::async_runtime as rt;
 use chrono::{DateTime, Utc};
 use influxdb::InfluxDbWriteable;
 use std::time::Duration;
-use sysinfo::{Networks, System};
+use sysinfo::{Networks, Process, System};
 
 /// OS Metrics
 pub const OS_CPU_USER: &str = "OS_CPU_USER";
@@ -72,11 +72,14 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs) {
 
     let extra = extra.unwrap_or(String::from("None"));
 
-    let mut sys = System::new();
+    let mut sys = System::new_all();
 
     let mut networks = Networks::new_with_refreshed_list();
 
+    let pid = sysinfo::get_current_pid().expect("Failed to get PID");
+
     loop {
+
         let mut readings = Vec::new();
 
         let cpu_readings = read_cpu_usage(&mut sys, host_name.clone(), extra.clone());
@@ -91,37 +94,35 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs) {
         readings.push(tx_speed.into_query(OS_NETWORK_UP));
         readings.push(rx_speed.into_query(OS_NETWORK_DOWN));
 
-        let ram_usage = read_ram_usage(&mut sys, host_name.clone(), extra.clone());
+        if let Some(process_info) = sys.process(pid) {
+            let ram_usage = read_ram_usage(process_info, host_name.clone(), extra.clone());
 
-        readings.push(ram_usage.into_query(OS_RAM_USAGE));
-
-        sys.refresh_all();
-        networks.refresh(false);
+            readings.push(ram_usage.into_query(OS_RAM_USAGE));
+        }
 
         let _result =
             rt::block_on(client.query(readings)).expect("Failed to write metrics to influxdb");
 
         std::thread::sleep(Duration::from_millis(250));
+
+        sys.refresh_all();
+        networks.refresh(false);
     }
 }
 
 fn read_cpu_usage(sys: &mut System, host_name: String, extra: String) -> Vec<MetricCPUReading> {
     let mut readings = Vec::new();
 
-    let mut curr_cpu = 0;
-
-    for cpu in sys.cpus() {
+    for (cpu_core, cpu) in sys.cpus().iter().enumerate() {
         let reading = MetricCPUReading {
             time: Utc::now(),
             host: host_name.clone(),
             extra: extra.clone(),
-            cpu: curr_cpu,
-            value: cpu.cpu_usage() as f64,
+            cpu: cpu_core as i32,
+            value: cpu.cpu_usage() as f64 / 100.0,
         };
 
         readings.push(reading);
-
-        curr_cpu += 1;
     }
 
     readings
@@ -159,8 +160,9 @@ fn read_network_speed(
     )
 }
 
-fn read_ram_usage(sys_ref: &mut System, host_name: String, extra: String) -> MetricRAMUsage {
-    let used_memory = sys_ref.used_memory();
+fn read_ram_usage(sys_ref: &Process, host_name: String, extra: String) -> MetricRAMUsage {
+
+    let used_memory = sys_ref.memory();
 
     MetricRAMUsage {
         time: Utc::now(),
