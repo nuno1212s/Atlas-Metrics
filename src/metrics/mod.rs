@@ -465,7 +465,7 @@ fn increase_welford_method(metric: &Metric, duration: u64) {
             s.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |s| {
                 Some(
                     s.overflowing_add((duration - new_m).overflowing_mul(duration - old_m).0)
-                        .0
+                        .0,
                 )
             })
             .expect("Failed to update sum_sqrs");

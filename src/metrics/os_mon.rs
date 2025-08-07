@@ -79,7 +79,6 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs) {
     let pid = sysinfo::get_current_pid().expect("Failed to get PID");
 
     loop {
-
         let mut readings = Vec::new();
 
         let cpu_readings = read_cpu_usage(&mut sys, host_name.clone(), extra.clone());
@@ -161,7 +160,6 @@ fn read_network_speed(
 }
 
 fn read_ram_usage(sys_ref: &Process, host_name: String, extra: String) -> MetricRAMUsage {
-
     let used_memory = sys_ref.memory();
 
     MetricRAMUsage {
