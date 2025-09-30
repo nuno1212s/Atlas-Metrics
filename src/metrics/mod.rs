@@ -531,7 +531,7 @@ fn collect_measurements(metric: &Metric) -> Vec<MetricData> {
 
 /// Collect all measurements from all metrics
 fn collect_all_measurements(level: &MetricLevel) -> Vec<(&Metric, MetricData)> {
-    match METRICS.get()  {
+    match METRICS.get() {
         Some(metrics) => {
             let mut collected_metrics = Vec::with_capacity(metrics.metrics.len());
 
@@ -740,7 +740,7 @@ pub fn metric_correlation_id_ended(
     correlation_id: impl AsRef<str>,
     location: Arc<str>,
 ) {
-    if let Some(ref metrics) = METRICS.get()  {
+    if let Some(ref metrics) = METRICS.get() {
         let metric = metric_at_index(metrics, m_index);
 
         if let Some(metric) = metric {
@@ -766,7 +766,7 @@ pub fn metric_correlation_id_passed(
     correlation_id: impl AsRef<str>,
     location: Arc<str>,
 ) {
-    if let Some(ref metrics) = METRICS.get()  {
+    if let Some(ref metrics) = METRICS.get() {
         let metric = metric_at_index(metrics, m_index);
 
         if let Some(metric) = metric {
@@ -793,7 +793,7 @@ pub fn metric_correlation_id_encapsulated(
     location: Arc<str>,
     (metric_id, encap_corr_id): (usize, impl AsRef<str>),
 ) {
-    if let Some(ref metrics) = METRICS.get()  {
+    if let Some(ref metrics) = METRICS.get() {
         let metric = metric_at_index(metrics, m_index);
 
         if let Some(metric) = metric {
@@ -846,7 +846,7 @@ pub fn metric_decapsulate_correlation_id(
 
 #[inline]
 pub fn metric_correlation_time_start(m_index: usize, correlation_id: impl AsRef<str>) {
-    if let Some(ref metrics) = METRICS.get()  {
+    if let Some(ref metrics) = METRICS.get() {
         let metric = metric_at_index(metrics, m_index);
 
         if let Some(metric) = metric {
@@ -868,7 +868,7 @@ pub fn metric_correlation_time_start(m_index: usize, correlation_id: impl AsRef<
 
 #[inline]
 pub fn metric_correlation_time_end(m_index: usize, correlation_id: impl AsRef<str>) {
-    if let Some(ref metrics) = METRICS.get()  {
+    if let Some(ref metrics) = METRICS.get() {
         let metric = metric_at_index(metrics, m_index);
 
         if let Some(metric) = metric {
