@@ -111,7 +111,7 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs, metric_level: MetricLevel) 
 
     client = client.with_auth(user, password);
 
-    let host_name = format!("{:?}", node_id);
+    let host_name = format!("{node_id:?}");
 
     let extra = extra.unwrap_or(String::from("None"));
 
@@ -191,7 +191,7 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs, metric_level: MetricLevel) 
                                     extra: extra.clone(),
                                     correlation_id: corr_id.to_string(),
                                     location: location.to_string(),
-                                    event: format!("{:?}", event),
+                                    event: format!("{event:?}"),
                                 }
                                 .into_query(metric_name.clone())
                             })

@@ -2,15 +2,13 @@ use std::cell::Cell;
 use std::fmt::{Debug, Formatter};
 use std::iter;
 use std::sync::atomic::{AtomicI64, AtomicU64, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, RwLock, RwLockReadGuard};
 use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
 use getset::Getters;
 use thread_local::ThreadLocal;
 use tracing::error;
-
-use atlas_common::globals::Global;
 
 use crate::metrics::correlation_counter::CorrelationCounterTracker;
 use crate::metrics::correlation_ids::{
@@ -26,7 +24,7 @@ mod correlation_time;
 pub mod metrics_thread;
 pub(super) mod os_mon;
 
-static mut METRICS: Global<Metrics> = Global::new();
+static METRICS: OnceLock<Metrics> = OnceLock::new();
 
 /// Metrics for the general library.
 pub struct Metrics {
@@ -47,6 +45,7 @@ pub struct Metric {
 }
 
 /// The data for a metric
+#[allow(clippy::large_enum_variant)]
 enum SafeMetricData {
     Sequential(Vec<Mutex<MetricData>>, ThreadLocal<Cell<usize>>),
     ThreadSafe(RwLock<MetricData>),
@@ -388,7 +387,7 @@ impl SafeMetricData {
         }
     }
 
-    pub fn locked_metric_data(&self) -> MutexGuard<MetricData> {
+    pub fn locked_metric_data(&'_ self) -> MutexGuard<'_, MetricData> {
         match self {
             SafeMetricData::Sequential(data, _) => {
                 let round_robin = self.get_round_robin();
@@ -404,7 +403,7 @@ impl SafeMetricData {
         }
     }
 
-    pub fn get_thread_safe_read(&self) -> RwLockReadGuard<MetricData> {
+    pub fn get_thread_safe_read(&'_ self) -> RwLockReadGuard<'_, MetricData> {
         match self {
             SafeMetricData::ThreadSafe(data) => data.read().unwrap(),
             SafeMetricData::Sequential(_, _) => {
@@ -435,9 +434,7 @@ pub(super) fn init(
     concurrency: usize,
     level: MetricLevel,
 ) {
-    unsafe {
-        METRICS.set(Metrics::new(registered_metrics, level, concurrency));
-    }
+    let _ = METRICS.set(Metrics::new(registered_metrics, level, concurrency));
 }
 
 /// Enqueue a duration measurement
@@ -534,7 +531,7 @@ fn collect_measurements(metric: &Metric) -> Vec<MetricData> {
 
 /// Collect all measurements from all metrics
 fn collect_all_measurements(level: &MetricLevel) -> Vec<(&Metric, MetricData)> {
-    match unsafe { METRICS.get() } {
+    match METRICS.get()  {
         Some(metrics) => {
             let mut collected_metrics = Vec::with_capacity(metrics.metrics.len());
 
@@ -593,7 +590,7 @@ pub fn metric_local_duration_end(metric: usize, start: Instant) {
 
 #[inline]
 pub fn metric_duration_start(m_index: usize) {
-    if let Some(ref metrics) = unsafe { METRICS.get() } {
+    if let Some(ref metrics) = METRICS.get() {
         let metric = metric_at_index(metrics, m_index);
 
         if let Some(metric) = metric {
@@ -613,7 +610,7 @@ pub fn metric_duration_start(m_index: usize) {
 
 #[inline]
 pub fn metric_duration_end(m_index: usize) {
-    if let Some(ref metrics) = unsafe { METRICS.get() } {
+    if let Some(ref metrics) = METRICS.get() {
         let metric = metric_at_index(metrics, m_index);
 
         if let Some(metric) = metric {
@@ -633,7 +630,7 @@ pub fn metric_duration_end(m_index: usize) {
 
 #[inline]
 pub fn metric_duration(m_index: usize, duration: Duration) {
-    if let Some(ref metrics) = unsafe { METRICS.get() } {
+    if let Some(ref metrics) = METRICS.get() {
         let metric = metric_at_index(metrics, m_index);
 
         if let Some(metric) = metric {
@@ -653,7 +650,7 @@ pub fn metric_duration(m_index: usize, duration: Duration) {
 
 #[inline]
 pub fn metric_increment(m_index: usize, counter: Option<u64>) {
-    if let Some(ref metrics) = unsafe { METRICS.get() } {
+    if let Some(ref metrics) = METRICS.get() {
         let metric = metric_at_index(metrics, m_index);
 
         if let Some(metric) = metric {
@@ -673,7 +670,7 @@ pub fn metric_increment(m_index: usize, counter: Option<u64>) {
 
 #[inline]
 pub fn metric_store_count(m_index: usize, amount: usize) {
-    if let Some(ref metrics) = unsafe { METRICS.get() } {
+    if let Some(ref metrics) = METRICS.get() {
         let metric = metric_at_index(metrics, m_index);
 
         if let Some(metric) = metric {
@@ -693,7 +690,7 @@ pub fn metric_store_count(m_index: usize, amount: usize) {
 
 #[inline]
 pub fn metric_store_count_max(m_index: usize, amount: usize) {
-    if let Some(ref metrics) = unsafe { METRICS.get() } {
+    if let Some(ref metrics) = METRICS.get() {
         let metric = metric_at_index(metrics, m_index);
 
         if let Some(metric) = metric {
@@ -717,7 +714,7 @@ pub fn metric_initialize_correlation_id(
     correlation_id: impl AsRef<str>,
     location: Arc<str>,
 ) {
-    if let Some(ref metrics) = unsafe { METRICS.get() } {
+    if let Some(ref metrics) = METRICS.get() {
         let metric = metric_at_index(metrics, m_index);
 
         if let Some(metric) = metric {
@@ -743,7 +740,7 @@ pub fn metric_correlation_id_ended(
     correlation_id: impl AsRef<str>,
     location: Arc<str>,
 ) {
-    if let Some(ref metrics) = unsafe { METRICS.get() } {
+    if let Some(ref metrics) = METRICS.get()  {
         let metric = metric_at_index(metrics, m_index);
 
         if let Some(metric) = metric {
@@ -769,7 +766,7 @@ pub fn metric_correlation_id_passed(
     correlation_id: impl AsRef<str>,
     location: Arc<str>,
 ) {
-    if let Some(ref metrics) = unsafe { METRICS.get() } {
+    if let Some(ref metrics) = METRICS.get()  {
         let metric = metric_at_index(metrics, m_index);
 
         if let Some(metric) = metric {
@@ -796,7 +793,7 @@ pub fn metric_correlation_id_encapsulated(
     location: Arc<str>,
     (metric_id, encap_corr_id): (usize, impl AsRef<str>),
 ) {
-    if let Some(ref metrics) = unsafe { METRICS.get() } {
+    if let Some(ref metrics) = METRICS.get()  {
         let metric = metric_at_index(metrics, m_index);
 
         if let Some(metric) = metric {
@@ -827,7 +824,7 @@ pub fn metric_decapsulate_correlation_id(
     correlation_id: impl AsRef<str>,
     location: Arc<str>,
 ) {
-    if let Some(ref metrics) = unsafe { METRICS.get() } {
+    if let Some(ref metrics) = METRICS.get() {
         let metric = metric_at_index(metrics, m_index);
 
         if let Some(metric) = metric {
@@ -849,7 +846,7 @@ pub fn metric_decapsulate_correlation_id(
 
 #[inline]
 pub fn metric_correlation_time_start(m_index: usize, correlation_id: impl AsRef<str>) {
-    if let Some(ref metrics) = unsafe { METRICS.get() } {
+    if let Some(ref metrics) = METRICS.get()  {
         let metric = metric_at_index(metrics, m_index);
 
         if let Some(metric) = metric {
@@ -871,7 +868,7 @@ pub fn metric_correlation_time_start(m_index: usize, correlation_id: impl AsRef<
 
 #[inline]
 pub fn metric_correlation_time_end(m_index: usize, correlation_id: impl AsRef<str>) {
-    if let Some(ref metrics) = unsafe { METRICS.get() } {
+    if let Some(ref metrics) = METRICS.get()  {
         let metric = metric_at_index(metrics, m_index);
 
         if let Some(metric) = metric {
@@ -908,7 +905,7 @@ pub fn metric_correlation_counter_increment_arc(
     correlation_id: Arc<str>,
     increment_count: Option<u64>,
 ) {
-    if let Some(ref metrics) = unsafe { METRICS.get() } {
+    if let Some(ref metrics) = METRICS.get() {
         let metric = metric_at_index(metrics, m_index);
 
         if let Some(metric) = metric {
