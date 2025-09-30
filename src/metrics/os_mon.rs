@@ -68,7 +68,7 @@ pub fn metric_thread_loop(influx_args: InfluxDBArgs) {
 
     client = client.with_auth(user, password);
 
-    let host_name = format!("{:?}", node_id);
+    let host_name = format!("{node_id:?}");
 
     let extra = extra.unwrap_or(String::from("None"));
 

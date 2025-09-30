@@ -14,6 +14,7 @@ mod metrics_tests {
     const TEST_DATA_COLLECTION_POINT_ID: usize = 0;
 
     #[test]
+    #[ignore]
     fn test_data_collection() {
         let _option = unsafe {
             init(InitConfig {
@@ -25,18 +26,18 @@ mod metrics_tests {
 
         let influx_db_password = std::env::var("INFLUX_DB_PASSWORD").unwrap();
 
-        let nodeId = NodeId::from(0u32);
+        let node_id = NodeId::from(0u32);
 
         let influx_args = InfluxDBArgs::new(
             INFLUX_DB_IP.to_string(),
             INFLUX_DB_NAME.to_string(),
             INFLUX_DB_USER.to_string(),
             influx_db_password,
-            nodeId,
+            node_id,
             None,
         );
 
-        println!("Connecting to InfluxDB with {:?}", influx_args);
+        println!("Connecting to InfluxDB with {influx_args:?}");
 
         initialize_metrics(
             vec![with_metrics(vec![(

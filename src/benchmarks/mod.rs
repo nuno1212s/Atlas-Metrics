@@ -895,15 +895,15 @@ impl BenchmarkHelperStore for Vec<u128> {
     }
 }
 
-fn gather_rqs(to_gather: &Vec<Mutex<BenchmarkHelper>>) {
+fn gather_rqs(to_gather: &[Mutex<BenchmarkHelper>]) {
     let mut first_elem = to_gather[0].lock().unwrap();
 
-    for i in 1..to_gather.len() {
-        first_elem.merge(&mut to_gather[i].lock().unwrap());
+    for item in to_gather.iter().skip(1) {
+        first_elem.merge(&mut item.lock().unwrap());
     }
 }
 
-fn insert_value(dest: &Vec<Mutex<BenchmarkHelper>>, time: u128) {
+fn insert_value(dest: &[Mutex<BenchmarkHelper>], time: u128) {
     let bucket = (time % CONCURRENCY_LEVEL) as usize;
 
     dest[bucket].lock().unwrap().values.push(time);
