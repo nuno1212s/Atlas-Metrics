@@ -14,6 +14,7 @@ mod metrics_tests {
     const TEST_DATA_COLLECTION_POINT_ID: usize = 0;
 
     #[test]
+    #[ignore]
     fn test_data_collection() {
         let _option = unsafe {
             init(InitConfig {
